@@ -38,15 +38,17 @@ export class FraudEngine {
     amountPoisha: number;
     currentBalancePoisha: number;
     requestId?: string;
+    client?: any;
   }): Promise<FraudEvaluationResult> {
-    const { senderId, receiverId, amountPoisha, currentBalancePoisha, requestId } = params;
+    const { senderId, receiverId, amountPoisha, currentBalancePoisha, requestId, client } = params;
+    const db = client || pool;
     const riskFactors: string[] = [];
     let riskScore = 5; // Baseline trust score
 
     // -------------------------------------------------------------
     // RULE 1: Velocity Check (Burst Transfer Detection)
     // -------------------------------------------------------------
-    const velocityRes = await pool.query(
+    const velocityRes = await db.query(
       `SELECT COUNT(*)::int as recent_count, COALESCE(SUM(amount), 0)::bigint as recent_sum
        FROM transactions t
        JOIN wallets w ON t.sender_wallet_id = w.id
@@ -89,7 +91,7 @@ export class FraudEngine {
     // -------------------------------------------------------------
     // RULE 4: First-Time Transfer Recipient Verification
     // -------------------------------------------------------------
-    const historyRes = await pool.query(
+    const historyRes = await db.query(
       `SELECT COUNT(*)::int as tx_count
        FROM transactions t
        JOIN wallets sw ON t.sender_wallet_id = sw.id

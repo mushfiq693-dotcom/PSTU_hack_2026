@@ -316,6 +316,7 @@ export class TransferService {
           amountPoisha,
           currentBalancePoisha: currentSenderBalance,
           requestId,
+          client,
         });
 
         if (fraudCheck.isBlocked) {
