@@ -13,23 +13,100 @@ import {
   Sparkles,
   ArrowRight,
   RefreshCw,
-  Scale
+  Play,
+  Flame,
+  ShieldAlert,
+  Terminal,
+  Check
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { ApiService } from '../../services/api';
 
 interface FraudRadarModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-export const FraudRadarModal: React.FC<FraudRadarModalProps> = ({ isOpen, onClose }) => {
-  const { currentUser } = useAuth();
+export interface AttackScenario {
+  id: string;
+  title: string;
+  badge: string;
+  badgeColor: string;
+  amount: number;
+  velocity: number;
+  drainPercent: number;
+  isFirstTime: boolean;
+  expectedVerdict: string;
+  description: string;
+}
 
-  // Interactive Live Simulation State
-  const [simAmount, setSimAmount] = useState<number>(5000);
+export const FraudRadarModal: React.FC<FraudRadarModalProps> = ({ isOpen, onClose }) => {
+  const { currentUser, allUsers, refreshWallet } = useAuth();
+
+  // Attack Scenarios for 1-Click Judge Demos
+  const attackScenarios: AttackScenario[] = [
+    {
+      id: 'clean_p2p',
+      title: '🟢 Normal Clean Transfer',
+      badge: 'LOW RISK (5/100)',
+      badgeColor: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+      amount: 2500,
+      velocity: 1,
+      drainPercent: 2,
+      isFirstTime: false,
+      expectedVerdict: 'ALLOW (0ms Instant Pass)',
+      description: 'Typical verified transfer between established connections. Zero risk flags.',
+    },
+    {
+      id: 'burst_velocity',
+      title: '🟡 Rapid Velocity Spike',
+      badge: 'HIGH RISK (65/100)',
+      badgeColor: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+      amount: 15000,
+      velocity: 6,
+      drainPercent: 15,
+      isFirstTime: false,
+      expectedVerdict: 'CHALLENGE_OTP (2FA Step-Up Required)',
+      description: 'Spike of 6 transfers within 60s window. Triggers velocity heuristic warning.',
+    },
+    {
+      id: 'drain_liquidation',
+      title: '🔴 Wallet Liquidation Attack',
+      badge: 'CRITICAL RISK (95/100)',
+      badgeColor: 'bg-rose-500/10 text-rose-400 border-rose-500/30',
+      amount: 65000,
+      velocity: 5,
+      drainPercent: 98,
+      isFirstTime: true,
+      expectedVerdict: 'BLOCK (403 Fraud Alert)',
+      description: 'Attempting to liquidate 98% balance (৳65k) in a single burst to a new unverified account.',
+    },
+  ];
+
+  // Active Selected Scenario / Parameters
+  const [selectedScenarioId, setSelectedScenarioId] = useState<string>('clean_p2p');
+  const [simAmount, setSimAmount] = useState<number>(2500);
   const [simVelocity, setSimVelocity] = useState<number>(1);
-  const [simDrainPercent, setSimDrainPercent] = useState<number>(10);
+  const [simDrainPercent, setSimDrainPercent] = useState<number>(2);
   const [isFirstTimeRecipient, setIsFirstTimeRecipient] = useState<boolean>(false);
+
+  // Live Server Attack Simulation State
+  const [isExecutingLive, setIsExecutingLive] = useState<boolean>(false);
+  const [liveServerResult, setLiveServerResult] = useState<{
+    status: 'SUCCESS' | 'BLOCKED';
+    statusCode: number;
+    message: string;
+    durationMs: number;
+  } | null>(null);
+
+  const selectScenario = (scenario: AttackScenario) => {
+    setSelectedScenarioId(scenario.id);
+    setSimAmount(scenario.amount);
+    setSimVelocity(scenario.velocity);
+    setSimDrainPercent(scenario.drainPercent);
+    setIsFirstTimeRecipient(scenario.isFirstTime);
+    setLiveServerResult(null);
+  };
 
   // Compute Heuristic Risk Score dynamically on screen
   const calculateRiskScore = () => {
@@ -91,6 +168,65 @@ export const FraudRadarModal: React.FC<FraudRadarModalProps> = ({ isOpen, onClos
 
   const evalResult = calculateRiskScore();
 
+  // Execute Real Live Attack against Backend
+  const handleExecuteLiveTest = async () => {
+    const targetRecipient = allUsers.find((u) => u.id !== currentUser?.id) || allUsers[1];
+    if (!targetRecipient || !currentUser) return;
+
+    setIsExecutingLive(true);
+    setLiveServerResult(null);
+    const startTime = performance.now();
+
+    try {
+      if (selectedScenarioId === 'drain_liquidation' || evalResult.score >= 80) {
+        // Critical attack simulation: attempt large value or high risk
+        await ApiService.transferMoney({
+          receiver_id: targetRecipient.id,
+          amount_bdt: simAmount,
+          note: 'Fraud Simulator Test Transfer',
+          category: 'Security Verification',
+          idempotency_key: `FRAUD-TEST-${Date.now()}`,
+        });
+
+        const duration = Math.round(performance.now() - startTime);
+        setLiveServerResult({
+          status: 'SUCCESS',
+          statusCode: 200,
+          message: 'Transfer processed normally.',
+          durationMs: duration,
+        });
+      } else {
+        // Normal or medium test
+        await ApiService.transferMoney({
+          receiver_id: targetRecipient.id,
+          amount_bdt: simAmount,
+          note: 'P2P Clean Transfer Test',
+          category: 'General',
+          idempotency_key: `CLEAN-TEST-${Date.now()}`,
+        });
+
+        const duration = Math.round(performance.now() - startTime);
+        setLiveServerResult({
+          status: 'SUCCESS',
+          statusCode: 200,
+          message: `Transfer of ৳${simAmount.toLocaleString()} completed successfully.`,
+          durationMs: duration,
+        });
+      }
+      await refreshWallet();
+    } catch (err: any) {
+      const duration = Math.round(performance.now() - startTime);
+      setLiveServerResult({
+        status: 'BLOCKED',
+        statusCode: err.response?.status || 403,
+        message: err.response?.data?.message || err.message || 'Transaction blocked by FastPay Fraud Engine',
+        durationMs: duration,
+      });
+    } finally {
+      setIsExecutingLive(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -100,7 +236,7 @@ export const FraudRadarModal: React.FC<FraudRadarModalProps> = ({ isOpen, onClos
           initial={{ opacity: 0, scale: 0.95, y: 10 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 10 }}
-          className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-[#0d1322] border border-slate-700/80 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 text-slate-100"
+          className="relative w-full max-w-4xl max-h-[92vh] overflow-y-auto bg-[#0d1322] border border-slate-700/80 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 text-slate-100"
         >
           {/* Header */}
           <div className="flex items-center justify-between border-b border-slate-800 pb-4">
@@ -113,7 +249,7 @@ export const FraudRadarModal: React.FC<FraudRadarModalProps> = ({ isOpen, onClos
                   FastPay Real-Time Anti-Fraud & Risk Radar
                 </h3>
                 <p className="text-xs text-slate-400">
-                  Live heuristic anomaly detection & multi-vector risk evaluation engine
+                  Live heuristic anomaly detection & 1-click attack simulation suite for Judges
                 </p>
               </div>
             </div>
@@ -126,71 +262,69 @@ export const FraudRadarModal: React.FC<FraudRadarModalProps> = ({ isOpen, onClos
             </button>
           </div>
 
-          {/* Active Protection Status Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-            <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-1">
-              <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Velocity Shield</div>
-              <div className="text-base font-bold text-emerald-400 flex items-center gap-1.5">
-                <Zap className="w-4 h-4" />
-                <span>60s Rolling Window</span>
+          {/* 🌟 1-Click Benchmark Attack Scenarios (For Judges) */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span>1-Click Live Attack Scenarios (Select to Test)</span>
               </div>
-              <p className="text-[11px] text-slate-500">Max 5 tx/min threshold</p>
+              <span className="text-[11px] text-slate-500">Pick any scenario to evaluate instantly</span>
             </div>
 
-            <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-1">
-              <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Anomaly Ceiling</div>
-              <div className="text-base font-bold text-teal-400 flex items-center gap-1.5">
-                <Activity className="w-4 h-4" />
-                <span>৳25k / ৳50k</span>
-              </div>
-              <p className="text-[11px] text-slate-500">Step-Up 2FA challenge</p>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-1">
-              <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Drain Guard</div>
-              <div className="text-base font-bold text-indigo-400 flex items-center gap-1.5">
-                <Lock className="w-4 h-4" />
-                <span>&gt;95% Balance Drain</span>
-              </div>
-              <p className="text-[11px] text-slate-500">Account liquidation shield</p>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-1">
-              <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Active Engine</div>
-              <div className="text-base font-bold text-purple-400 flex items-center gap-1.5">
-                <Gauge className="w-4 h-4" />
-                <span>Live Pre-Commit</span>
-              </div>
-              <p className="text-[11px] text-slate-500">Zero database race delay</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {attackScenarios.map((scenario) => {
+                const isSelected = selectedScenarioId === scenario.id;
+                return (
+                  <button
+                    type="button"
+                    key={scenario.id}
+                    onClick={() => selectScenario(scenario)}
+                    className={`p-4 rounded-2xl border text-left transition-all relative overflow-hidden ${
+                      isSelected
+                        ? 'bg-slate-900 border-emerald-500 ring-1 ring-emerald-500 shadow-lg shadow-emerald-950/50'
+                        : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-1 mb-1.5">
+                      <h5 className="text-xs font-bold text-white">{scenario.title}</h5>
+                      <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full border ${scenario.badgeColor}`}>
+                        {scenario.badge}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed mb-2">
+                      {scenario.description}
+                    </p>
+                    <div className="text-[10px] font-mono text-emerald-400 font-semibold flex items-center gap-1">
+                      <span>Expected:</span>
+                      <span className="truncate text-slate-200">{scenario.expectedVerdict}</span>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          {/* Live Simulator & Score Radar */}
+          {/* Dynamic Evaluation Panel & Live Server Action */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 bg-slate-900/60 p-5 sm:p-6 rounded-3xl border border-slate-800">
             
-            {/* Left Controls (Simulate parameters) */}
-            <div className="lg:col-span-7 space-y-5">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-emerald-400" />
-                  <span>Live Risk Assessment Simulator (For Judges)</span>
-                </h4>
+            {/* Left: Parameter Breakdown */}
+            <div className="lg:col-span-7 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <span className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+                  Active Scenario Parameters
+                </span>
                 <button
-                  onClick={() => {
-                    setSimAmount(5000);
-                    setSimVelocity(1);
-                    setSimDrainPercent(10);
-                    setIsFirstTimeRecipient(false);
-                  }}
-                  className="text-xs text-slate-400 hover:text-emerald-400 flex items-center gap-1 transition-colors"
+                  onClick={() => selectScenario(attackScenarios[0])}
+                  className="text-[11px] text-slate-400 hover:text-emerald-400 flex items-center gap-1 transition-colors"
                 >
                   <RefreshCw className="w-3 h-3" />
-                  <span>Reset Test</span>
+                  <span>Reset to Clean</span>
                 </button>
               </div>
 
               {/* Slider 1: Amount */}
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <div className="flex justify-between text-xs">
                   <span className="text-slate-400">Transfer Amount:</span>
                   <span className="font-mono font-bold text-emerald-400">৳{simAmount.toLocaleString()} BDT</span>
@@ -201,21 +335,19 @@ export const FraudRadarModal: React.FC<FraudRadarModalProps> = ({ isOpen, onClos
                   max="75000"
                   step="500"
                   value={simAmount}
-                  onChange={(e) => setSimAmount(Number(e.target.value))}
+                  onChange={(e) => {
+                    setSimAmount(Number(e.target.value));
+                    setSelectedScenarioId('custom');
+                  }}
                   className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
                 />
-                <div className="flex justify-between text-[10px] text-slate-500">
-                  <span>৳500 (Normal)</span>
-                  <span>৳25,000 (Elevated)</span>
-                  <span>৳50,000+ (Critical)</span>
-                </div>
               </div>
 
               {/* Slider 2: Velocity */}
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <div className="flex justify-between text-xs">
                   <span className="text-slate-400">Recent Velocity (Transfers in 60s):</span>
-                  <span className="font-mono font-bold text-teal-400">{simVelocity} transfers</span>
+                  <span className="font-mono font-bold text-teal-400">{simVelocity} transfers / 60s</span>
                 </div>
                 <input
                   type="range"
@@ -223,46 +355,100 @@ export const FraudRadarModal: React.FC<FraudRadarModalProps> = ({ isOpen, onClos
                   max="8"
                   step="1"
                   value={simVelocity}
-                  onChange={(e) => setSimVelocity(Number(e.target.value))}
+                  onChange={(e) => {
+                    setSimVelocity(Number(e.target.value));
+                    setSelectedScenarioId('custom');
+                  }}
                   className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-teal-500"
                 />
-                <div className="flex justify-between text-[10px] text-slate-500">
-                  <span>1 (Normal)</span>
-                  <span>3 (Elevated)</span>
-                  <span>5+ (Burst Spike)</span>
-                </div>
               </div>
 
               {/* Slider 3: Drain Percentage */}
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <div className="flex justify-between text-xs">
-                  <span className="text-slate-400">Wallet Outflow Percentage:</span>
+                  <span className="text-slate-400">Wallet Outflow (Liquidation):</span>
                   <span className="font-mono font-bold text-indigo-400">{simDrainPercent}% of balance</span>
                 </div>
                 <input
                   type="range"
-                  min="5"
+                  min="2"
                   max="100"
-                  step="5"
+                  step="2"
                   value={simDrainPercent}
-                  onChange={(e) => setSimDrainPercent(Number(e.target.value))}
+                  onChange={(e) => {
+                    setSimDrainPercent(Number(e.target.value));
+                    setSelectedScenarioId('custom');
+                  }}
                   className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
                 />
               </div>
 
               {/* Checkbox 4: First Time Recipient */}
-              <label className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-800/60 border border-slate-700/60 cursor-pointer text-xs">
+              <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-slate-800/60 border border-slate-700/60 cursor-pointer text-xs">
                 <input
                   type="checkbox"
                   checked={isFirstTimeRecipient}
-                  onChange={(e) => setIsFirstTimeRecipient(e.target.checked)}
+                  onChange={(e) => {
+                    setIsFirstTimeRecipient(e.target.checked);
+                    setSelectedScenarioId('custom');
+                  }}
                   className="w-4 h-4 rounded text-emerald-500 accent-emerald-500"
                 />
                 <span className="text-slate-300">Recipient is a newly registered / unverified account (+15 Risk)</span>
               </label>
+
+              {/* 🚀 Action: Fire Live Test against Server */}
+              <div className="pt-2">
+                <button
+                  type="button"
+                  disabled={isExecutingLive}
+                  onClick={handleExecuteLiveTest}
+                  className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-950/40 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                >
+                  {isExecutingLive ? (
+                    <>
+                      <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                      <span>Executing Live Test on Server...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                      <span>▶ Test This Scenario Live on PostgreSQL Backend</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Live Server Response Display */}
+              {liveServerResult && (
+                <div
+                  className={`p-3.5 rounded-xl border text-xs font-mono space-y-1 animate-in fade-in ${
+                    liveServerResult.status === 'BLOCKED'
+                      ? 'bg-rose-500/10 border-rose-500/40 text-rose-300'
+                      : 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between font-bold">
+                    <span className="flex items-center gap-1.5">
+                      {liveServerResult.status === 'BLOCKED' ? (
+                        <XCircle className="w-4 h-4 text-rose-400" />
+                      ) : (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      )}
+                      <span>HTTP {liveServerResult.statusCode} {liveServerResult.status}</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-normal">
+                      Latency: {liveServerResult.durationMs}ms
+                    </span>
+                  </div>
+                  <div className="text-[11px] font-sans leading-relaxed text-slate-200">
+                    {liveServerResult.message}
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Right Side: Dynamic Evaluation Output */}
+            {/* Right: Dynamic Evaluation Output */}
             <div className="lg:col-span-5 flex flex-col justify-between p-5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-4">
               <div className="space-y-3">
                 <div className="text-xs uppercase tracking-wider text-slate-400 font-semibold flex items-center justify-between">
@@ -299,12 +485,12 @@ export const FraudRadarModal: React.FC<FraudRadarModalProps> = ({ isOpen, onClos
                 {/* Action Recommendation */}
                 <div className={`p-3 rounded-xl border text-xs font-semibold space-y-1 ${evalResult.color}`}>
                   <div className="text-[10px] uppercase font-bold text-slate-300">Engine Verdict:</div>
-                  <div>{evalResult.action}</div>
+                  <div className="leading-relaxed">{evalResult.action}</div>
                 </div>
 
                 {/* Triggered Risk Factors */}
                 <div className="space-y-1.5 pt-1">
-                  <div className="text-[10px] uppercase text-slate-400 font-semibold">Active Risk Factors:</div>
+                  <div className="text-[10px] uppercase text-slate-400 font-semibold">Active Risk Flags:</div>
                   {evalResult.factors.length === 0 ? (
                     <div className="text-xs text-emerald-400/80 flex items-center gap-1.5">
                       <CheckCircle2 className="w-3.5 h-3.5" />
@@ -329,13 +515,17 @@ export const FraudRadarModal: React.FC<FraudRadarModalProps> = ({ isOpen, onClos
               </div>
 
               <div className="border-t border-slate-800 pt-3 text-[10px] text-slate-500 font-mono text-center">
-                FastPay Heuristic Risk Engine • Integrated with PostgreSQL Ledger
+                FastPay Heuristic Risk Engine • Multi-Vector Rules
               </div>
             </div>
           </div>
 
           {/* Footer Close */}
-          <div className="flex justify-end pt-2">
+          <div className="flex justify-between items-center pt-2">
+            <div className="text-[11px] text-slate-400 flex items-center gap-1.5 font-mono">
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <span>Evaluated in real-time before PostgreSQL transaction commit</span>
+            </div>
             <button
               onClick={onClose}
               className="px-6 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white transition-colors"
