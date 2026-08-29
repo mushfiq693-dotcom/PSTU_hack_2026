@@ -16,7 +16,7 @@ app.use(express.json());
 app.get('/health', (req: Request, res: Response) => {
   res.status(200).json({
     status: 'UP',
-    service: 'NexusPay Engine',
+    service: 'FastPay Engine',
     timestamp: new Date().toISOString()
   });
 });

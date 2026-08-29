@@ -23,7 +23,7 @@ async function startServer(): Promise<void> {
     app.listen(PORT, () => {
       console.log(`
 ============================================================
-🚀 NexusPay Engine API Server Running (PostgreSQL)
+🚀 FastPay Engine API Server Running (PostgreSQL)
 📡 URL: http://localhost:${PORT}
 ⚡ Engine: PostgreSQL 16 (Row-Level Locking + ACID)
 💼 PSTU National Hackathon 2026

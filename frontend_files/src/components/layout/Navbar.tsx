@@ -9,10 +9,9 @@ import {
   UserCheck,
   FileSpreadsheet,
   Cpu,
-  RotateCcw,
   ChevronDown,
-  ShieldCheck,
-  Check
+  Check,
+  RotateCcw
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -48,19 +47,12 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
     <header className="sticky top-0 z-40 w-full border-b border-slate-800/80 bg-[#090d16]/85 backdrop-blur-2xl transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
         
-        {/* Brand Logo & Engine Badge */}
-        <div className="flex items-center gap-6">
-          <div 
-            onClick={() => setActiveTab('dashboard')} 
-            className="cursor-pointer"
-          >
-            <FastPayLogo size="md" />
-          </div>
-
-          <div className="hidden lg:flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-[11px] font-semibold text-emerald-400">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span>PostgreSQL 16 ACID</span>
-          </div>
+        {/* Brand Logo */}
+        <div 
+          onClick={() => setActiveTab('dashboard')} 
+          className="cursor-pointer flex items-center"
+        >
+          <FastPayLogo size="md" />
         </div>
 
         {/* Central Clean Nav Tabs with Framer Motion Pill */}
@@ -90,32 +82,14 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
           })}
         </nav>
 
-        {/* Persona Switcher & Reset */}
+        {/* Persona Switcher */}
         <div className="flex items-center gap-3">
-          
-          {/* Quick Reset Demo Button */}
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => {
-              if (window.confirm('Reset all demo accounts to ৳100,000 baseline?')) {
-                resetDemoData();
-              }
-            }}
-            title="Reset demo balances to ৳100k per user"
-            className="p-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-400 hover:text-amber-400 border border-slate-800 transition-all flex items-center gap-1.5 text-xs font-medium"
-          >
-            <RotateCcw className={`w-4 h-4 ${isLoading ? 'animate-spin text-amber-400' : ''}`} />
-            <span className="hidden sm:inline font-mono">Reset ৳100k</span>
-          </motion.button>
-
-          {/* Active Persona Dropdown */}
           <div className="relative" ref={dropdownRef}>
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               onClick={() => setDropdownOpen(!dropdownOpen)}
-              className="flex items-center gap-3 p-1.5 pl-3 rounded-2xl bg-slate-900/90 hover:bg-slate-800/90 border border-slate-700/80 shadow-md transition-all group"
+              className="flex items-center gap-3 p-1.5 pl-3.5 rounded-2xl bg-slate-900/90 hover:bg-slate-800/90 border border-slate-700/80 shadow-md transition-all group"
             >
               <div className="text-right hidden sm:block">
                 <div className="text-xs font-bold text-slate-200 group-hover:text-emerald-400 transition-colors">
@@ -133,7 +107,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
               <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${dropdownOpen ? 'rotate-180' : ''}`} />
             </motion.button>
 
-            {/* Persona Switcher Dropdown Menu with Framer Motion */}
+            {/* Persona Switcher Dropdown Menu */}
             <AnimatePresence>
               {dropdownOpen && (
                 <motion.div
@@ -148,7 +122,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
                       Switch Demo Persona
                     </p>
                     <p className="text-[11px] text-slate-500">
-                      Instantly test money movements as another user
+                      Instantly test as another user
                     </p>
                   </div>
                   <div className="space-y-1">
@@ -189,6 +163,22 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
                         </button>
                       );
                     })}
+                  </div>
+
+                  {/* Clean bottom option to reset balances if needed */}
+                  <div className="mt-2 pt-2 border-t border-slate-800">
+                    <button
+                      onClick={() => {
+                        if (window.confirm('Reset all demo balances to ৳100,000?')) {
+                          resetDemoData();
+                          setDropdownOpen(false);
+                        }
+                      }}
+                      className="w-full py-1.5 px-2 rounded-lg text-[11px] text-slate-400 hover:text-amber-400 hover:bg-slate-800/60 transition-colors flex items-center justify-center gap-1.5 font-medium"
+                    >
+                      <RotateCcw className={`w-3 h-3 ${isLoading ? 'animate-spin text-amber-400' : ''}`} />
+                      <span>Reset all balances to ৳100k</span>
+                    </button>
                   </div>
                 </motion.div>
               )}
