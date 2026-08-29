@@ -52,6 +52,14 @@ export const SEED_USERS: SeedUser[] = [
     email: 'rahim@nexuspay.com',
     avatar: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=150&auto=format&fit=crop&q=80',
     pin: '1234'
+  },
+  {
+    id: 'usr_hacker_06',
+    name: '😈 Rogue Attacker',
+    phone: '01799999999',
+    email: 'hacker@darkweb.net',
+    avatar: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=150&auto=format&fit=crop&q=80',
+    pin: '1234'
   }
 ];
 

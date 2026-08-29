@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from '../middlewares/auth';
 import { UserService } from '../services/userService';
+import { pool } from '../config/db';
 
 export class UserController {
   /**
@@ -52,6 +53,47 @@ export class UserController {
       res.status(500).json({
         success: false,
         error_code: 'WALLET_FETCH_ERROR',
+        message: err.message
+      });
+    }
+  }
+
+  /**
+   * POST /api/wallets/unfreeze
+   * Verified owner unfreezes wallet after fraud inspection
+   */
+  public static async unfreezeWallet(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      await pool.query(
+        `UPDATE wallets SET status = 'ACTIVE', updated_at = NOW() WHERE user_id = $1`,
+        [userId]
+      );
+
+      await pool.query(
+        `INSERT INTO notifications (id, user_id, type, reference_id, title, message, is_read, created_at)
+         VALUES ($1, $2, 'SECURITY_RESTORED', $3, $4, $5, FALSE, NOW())`,
+        [
+          `notif-unfreeze-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+          userId,
+          `unfreeze-${Date.now()}`,
+          '🛡️ Account Restored: Wallet Unfrozen',
+          'Your wallet has been safely verified and restored to ACTIVE status by the account owner.'
+        ]
+      );
+
+      const profile = await UserService.getUserById(userId);
+
+      res.status(200).json({
+        success: true,
+        message: 'Wallet successfully unfrozen and restored to ACTIVE status.',
+        data: profile
+      });
+    } catch (err: any) {
+      (res as any).locals.errorCode = 'WALLET_UNFREEZE_ERROR';
+      res.status(500).json({
+        success: false,
+        error_code: 'WALLET_UNFREEZE_ERROR',
         message: err.message
       });
     }

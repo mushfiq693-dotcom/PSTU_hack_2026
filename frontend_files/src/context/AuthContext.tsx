@@ -10,6 +10,7 @@ interface AuthContextType {
   switchUser: (userId: string) => Promise<void>;
   refreshUserData: () => Promise<void>;
   refreshWallet: () => Promise<void>;
+  unfreezeMyWallet: () => Promise<void>;
   resetDemoData: () => Promise<void>;
   logout: () => void;
   setAuthenticatedUser: (user: UserWithWallet) => void;
@@ -44,6 +45,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsLoading(false);
     }
   }, []);
+
+  const refreshWallet = async () => {
+    try {
+      const userProfile = await ApiService.getMyWallet();
+      setCurrentUser(userProfile);
+    } catch (err) {
+      console.error('Failed to refresh wallet state:', err);
+    }
+  };
+
+  const unfreezeMyWallet = async () => {
+    try {
+      const updated = await ApiService.unfreezeWallet();
+      setCurrentUser(updated);
+      await refreshUserData();
+    } catch (err) {
+      console.error('Failed to unfreeze wallet:', err);
+    }
+  };
 
   const switchUser = async (userId: string) => {
     setIsLoading(true);
@@ -87,6 +107,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     refreshUserData();
   }, [refreshUserData]);
 
+  // Real-time synchronization for multi-device demo (e.g. Attack from Laptop 1 detected on Laptop 2)
+  useEffect(() => {
+    if (!currentUser) return;
+    const interval = setInterval(async () => {
+      try {
+        const wallet = await ApiService.getMyWallet();
+        if (wallet && (wallet.balance !== currentUser.balance || wallet.status !== currentUser.status)) {
+          setCurrentUser(wallet);
+        }
+      } catch (e) {
+        // silent
+      }
+    }, 2500);
+
+    return () => clearInterval(interval);
+  }, [currentUser?.id, currentUser?.balance, currentUser?.status]);
+
   const isAuthenticated = currentUser !== null;
 
   return (
@@ -98,7 +135,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAuthenticated,
         switchUser,
         refreshUserData,
-        refreshWallet: refreshUserData,
+        refreshWallet,
+        unfreezeMyWallet,
         resetDemoData,
         logout,
         setAuthenticatedUser,

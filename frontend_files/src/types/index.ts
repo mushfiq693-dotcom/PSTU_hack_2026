@@ -26,8 +26,10 @@ export interface User {
 export interface UserWithWallet extends User {
   wallet_id: string;
   balance: number; // in integer Poisha
+  balance_poisha?: number;
   currency: string;
   balance_bdt: number;
+  status?: 'ACTIVE' | 'FROZEN' | 'CLOSED';
 }
 
 export interface Transaction {

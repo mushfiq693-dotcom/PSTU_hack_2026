@@ -118,6 +118,28 @@ export class FraudEngine {
       riskLevel = 'CRITICAL';
       recommendation = 'BLOCK';
       isBlocked = true;
+
+      // AUTOMATED DEFENSE: Auto-Freeze Wallet & Dispatch Critical Alert
+      try {
+        await db.query(
+          `UPDATE wallets SET status = 'FROZEN', updated_at = NOW() WHERE user_id = $1`,
+          [senderId]
+        );
+
+        await db.query(
+          `INSERT INTO notifications (id, user_id, type, reference_id, title, message, is_read, created_at)
+           VALUES ($1, $2, 'FRAUD_ALERT', $3, $4, $5, FALSE, NOW())`,
+          [
+            `notif-fraud-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+            senderId,
+            requestId || `req-${Date.now()}`,
+            '🚨 SECURITY INTERVENTION: Wallet Auto-Frozen',
+            `FastPay Fraud Radar intercepted an unauthorized transfer of ৳${(amountPoisha / 100).toLocaleString()} (Risk: ${riskScore}/100, Reason: ${riskFactors.join(', ')}). Your wallet has been auto-FROZEN for safety.`
+          ]
+        );
+      } catch (freezeErr) {
+        Logger.error('SECURITY', 'FRAUD_AUTO_FREEZE_ERROR', 'Failed to auto-freeze wallet during fraud interception', { freezeErr });
+      }
     } else if (riskScore >= 45) {
       riskLevel = 'HIGH';
       recommendation = 'CHALLENGE_OTP';

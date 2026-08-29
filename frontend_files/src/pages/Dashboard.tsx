@@ -11,7 +11,10 @@ import {
   ArrowUpRight,
   ArrowDownLeft,
   Clock,
-  ExternalLink
+  ExternalLink,
+  ShieldAlert,
+  ShieldCheck,
+  RotateCcw
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -19,11 +22,12 @@ interface DashboardProps {
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
-  const { currentUser } = useAuth();
+  const { currentUser, unfreezeMyWallet, refreshWallet } = useAuth();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isExpanded, setIsExpanded] = useState<boolean>(true);
+  const [isUnfreezing, setIsUnfreezing] = useState<boolean>(false);
 
   const fetchHistory = useCallback(async () => {
     setIsLoading(true);
@@ -41,6 +45,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
     fetchHistory();
   }, [fetchHistory]);
 
+  const handleUnfreeze = async () => {
+    setIsUnfreezing(true);
+    try {
+      await unfreezeMyWallet();
+      await fetchHistory();
+    } catch (e) {
+      console.error('Unfreeze failed:', e);
+    } finally {
+      setIsUnfreezing(false);
+    }
+  };
+
   const filteredTransactions = transactions.filter((tx) => {
     const search = searchTerm.toLowerCase();
     return (
@@ -55,6 +71,54 @@ export const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
   return (
     <div className="max-w-5xl mx-auto space-y-7">
       
+      {/* 🚨 CRITICAL FRAUD INTERVENTION & AUTO-FROZEN SECURITY BANNER */}
+      {currentUser?.status === 'FROZEN' && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.98, y: -10 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          className="p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-rose-950/90 via-slate-900 to-rose-950/90 border-2 border-rose-500/80 shadow-2xl shadow-rose-950/60 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-in fade-in"
+        >
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/20 border border-rose-500 flex items-center justify-center text-rose-400 shrink-0 animate-pulse">
+              <ShieldAlert className="w-7 h-7" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-full bg-rose-500 text-slate-950 uppercase">
+                  SECURITY DEFENSE ACTIVE
+                </span>
+                <h4 className="text-base font-extrabold text-white">
+                  FastPay Fraud Engine Auto-Froze This Wallet
+                </h4>
+              </div>
+              <p className="text-xs text-slate-300 mt-1 leading-relaxed max-w-2xl">
+                An unauthorized high-risk attack (liquidation/burst anomaly) was intercepted on your account from a rogue session. All outgoing funds have been locked to preserve your balance. <strong>Zero Taka was lost!</strong>
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5 w-full md:w-auto shrink-0">
+            <button
+              onClick={handleUnfreeze}
+              disabled={isUnfreezing}
+              className="flex-1 md:flex-none px-5 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-extrabold text-xs shadow-lg shadow-emerald-950/60 flex items-center justify-center gap-2 transition-all"
+            >
+              {isUnfreezing ? (
+                <>
+                  <span className="w-3.5 h-3.5 rounded-full border-2 border-slate-950/30 border-t-slate-950 animate-spin" />
+                  <span>Restoring Account...</span>
+                </>
+              ) : (
+                <>
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>🛡️ Verify & Unfreeze Wallet</span>
+                </>
+              )}
+            </button>
+          </div>
+        </motion.div>
+      )}
+
       {/* 1. Primary Wallet Balance Card */}
       <BalanceCard setActiveTab={setActiveTab} />
 

@@ -22,7 +22,8 @@ export class UserService {
         u.created_at,
         w.id as wallet_id,
         w.balance,
-        w.currency
+        w.currency,
+        w.status
       FROM users u
       JOIN wallets w ON u.id = w.user_id
       WHERE u.id != 'usr_system_treasury'
@@ -60,7 +61,8 @@ export class UserService {
         u.created_at,
         w.id as wallet_id,
         w.balance,
-        w.currency
+        w.currency,
+        w.status
       FROM users u
       JOIN wallets w ON u.id = w.user_id
       WHERE u.id = $1`,

@@ -226,6 +226,17 @@ export class ApiService {
     return json.data;
   }
 
+  public static async unfreezeWallet(): Promise<UserWithWallet> {
+    this.clearCache();
+    const res = await fetch(`${API_BASE}/wallets/unfreeze`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || 'Failed to unfreeze wallet');
+    return json.data;
+  }
+
   public static async getHistory(limit = 50): Promise<Transaction[]> {
     const activeUserId = localStorage.getItem('nexuspay_active_user_id') || 'default';
     const cacheKey = `history:${activeUserId}:${limit}`;

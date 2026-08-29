@@ -29,6 +29,7 @@ apiRouter.put('/auth/profile', authMiddleware, AuthController.updateProfile);
 // ==========================================
 apiRouter.get('/users', UserController.listUsers);
 apiRouter.get('/wallets/me', authMiddleware, UserController.getMyWallet);
+apiRouter.post('/wallets/unfreeze', authMiddleware, UserController.unfreezeWallet);
 apiRouter.post('/dev/reset', UserController.resetDemo);
 
 // ==========================================

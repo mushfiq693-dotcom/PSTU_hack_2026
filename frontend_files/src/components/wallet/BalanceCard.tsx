@@ -7,6 +7,7 @@ import {
   ArrowDownLeft,
   Layers,
   ShieldCheck,
+  ShieldAlert,
   Sparkles,
   Wallet
 } from 'lucide-react';
@@ -26,7 +27,11 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({ setActiveTab }) => {
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25 }}
-      className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900/95 to-slate-950 border border-slate-800/80 p-6 sm:p-8 shadow-2xl glow-emerald-box"
+      className={`relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900/95 to-slate-950 border p-6 sm:p-8 shadow-2xl ${
+        currentUser?.status === 'FROZEN'
+          ? 'border-rose-500/50 shadow-rose-950/40'
+          : 'border-slate-800/80 glow-emerald-box'
+      }`}
     >
       {/* Subtle background ambient gradients */}
       <div className="absolute top-0 right-0 -mr-20 -mt-20 w-72 h-72 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -35,13 +40,23 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({ setActiveTab }) => {
       {/* Top Meta Bar */}
       <div className="relative z-10 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+          <div
+            className={`p-2.5 rounded-2xl border ${
+              currentUser?.status === 'FROZEN'
+                ? 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+                : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+            }`}
+          >
             <Wallet className="w-5 h-5" />
           </div>
           <div>
             <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
               <span>Primary Wallet</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  currentUser?.status === 'FROZEN' ? 'bg-rose-400 animate-ping' : 'bg-emerald-400 animate-pulse'
+                }`}
+              />
             </div>
             <div className="text-sm font-bold text-slate-200">
               {currentUser?.name} <span className="text-xs text-slate-500 font-mono">({currentUser?.phone})</span>
@@ -49,9 +64,24 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({ setActiveTab }) => {
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-950/80 border border-slate-800 rounded-full text-xs font-medium text-slate-300">
-          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-          <span>PostgreSQL ACID Locked</span>
+        <div
+          className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${
+            currentUser?.status === 'FROZEN'
+              ? 'bg-rose-500/20 border border-rose-500/50 text-rose-300 animate-pulse'
+              : 'bg-slate-950/80 border border-slate-800 text-slate-300'
+          }`}
+        >
+          {currentUser?.status === 'FROZEN' ? (
+            <>
+              <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
+              <span className="font-bold">WALLET FROZEN (Protected)</span>
+            </>
+          ) : (
+            <>
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span>PostgreSQL ACID Locked</span>
+            </>
+          )}
         </div>
       </div>
 
