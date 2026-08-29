@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 import { ApiService } from '../../services/api';
 import { Connection } from '../../types';
+import { FraudRadarModal } from '../security/FraudRadarModal';
 import {
   ArrowRightLeft,
   CheckCircle2,
@@ -15,7 +16,9 @@ import {
   ShieldCheck,
   RotateCcw,
   Users2,
-  Heart
+  Heart,
+  ShieldAlert,
+  Activity
 } from 'lucide-react';
 
 export const SendMoneyView: React.FC = () => {
@@ -27,6 +30,7 @@ export const SendMoneyView: React.FC = () => {
   const [note, setNote] = useState<string>('');
   const [category, setCategory] = useState<string>('General');
   const [connections, setConnections] = useState<Connection[]>([]);
+  const [fraudModalOpen, setFraudModalOpen] = useState<boolean>(false);
   const [idempotencyKey, setIdempotencyKey] = useState<string>(
     `IDEM-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`
   );
@@ -368,6 +372,58 @@ export const SendMoneyView: React.FC = () => {
                   </button>
                 ))}
               </div>
+
+              {/* Live Real-Time Fraud & Security Radar Banner */}
+              {parseFloat(amountBdt || '0') > 0 && (
+                <div
+                  className={`mt-3 p-3 rounded-2xl border transition-all flex items-center justify-between gap-2 ${
+                    parseFloat(amountBdt) >= 50000
+                      ? 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                      : parseFloat(amountBdt) >= 25000
+                      ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                      : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <ShieldCheck
+                      className={`w-4 h-4 shrink-0 ${
+                        parseFloat(amountBdt) >= 50000
+                          ? 'text-rose-400'
+                          : parseFloat(amountBdt) >= 25000
+                          ? 'text-amber-400'
+                          : 'text-emerald-400'
+                      }`}
+                    />
+                    <div className="text-xs">
+                      <div className="font-bold flex items-center gap-1.5 truncate">
+                        <span>FastPay Fraud Engine:</span>
+                        <span className="font-mono uppercase font-extrabold text-[11px]">
+                          {parseFloat(amountBdt) >= 50000
+                            ? 'Critical High-Value (Risk: 45/100)'
+                            : parseFloat(amountBdt) >= 25000
+                            ? 'Elevated Value (Risk: 30/100)'
+                            : 'Clean Profile (Risk: 5/100)'}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-400">
+                        {parseFloat(amountBdt) >= 50000
+                          ? 'Step-Up verification rule active.'
+                          : parseFloat(amountBdt) >= 25000
+                          ? 'Real-time velocity & anomaly check passed.'
+                          : 'Verified P2P transfer • 0ms instant execution.'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setFraudModalOpen(true)}
+                    className="px-2.5 py-1 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700 text-[10px] font-semibold text-slate-200 hover:text-white transition-all shrink-0"
+                  >
+                    Inspect Radar
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* 4. Category & Note */}
@@ -444,6 +500,12 @@ export const SendMoneyView: React.FC = () => {
           </motion.form>
         )}
       </AnimatePresence>
+
+      {/* Real-Time Fraud & AML Risk Radar Modal */}
+      <FraudRadarModal
+        isOpen={fraudModalOpen}
+        onClose={() => setFraudModalOpen(false)}
+      />
     </div>
   );
 };

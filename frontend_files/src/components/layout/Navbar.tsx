@@ -5,6 +5,7 @@ import { TabType } from '../../types';
 import { FastPayLogo } from '../common/FastPayLogo';
 import { NotificationBell } from '../notifications/NotificationBell';
 import { ProfileModal } from '../auth/ProfileModal';
+import { FraudRadarModal } from '../security/FraudRadarModal';
 import {
   ArrowRightLeft,
   UserCheck,
@@ -15,6 +16,7 @@ import {
   Receipt,
   LogOut,
   Zap,
+  ShieldCheck,
   User
 } from 'lucide-react';
 
@@ -41,6 +43,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [fraudModalOpen, setFraudModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown on click outside
@@ -128,6 +131,18 @@ export const Navbar: React.FC<NavbarProps> = ({
                 >
                   <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
                   <span className="hidden sm:inline">Concurrency Lab</span>
+                </motion.button>
+
+                {/* Real-Time Fraud & AML Radar Demo Button */}
+                <motion.button
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => setFraudModalOpen(true)}
+                  className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border shadow-sm bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                  title="Open Real-Time Anti-Fraud & Risk Radar Simulator"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="hidden sm:inline">Fraud Radar</span>
                 </motion.button>
 
                 {/* In-App Notifications Bell */}
@@ -305,6 +320,12 @@ export const Navbar: React.FC<NavbarProps> = ({
           }}
         />
       )}
+
+      {/* Real-Time Fraud & AML Risk Radar Modal */}
+      <FraudRadarModal
+        isOpen={fraudModalOpen}
+        onClose={() => setFraudModalOpen(false)}
+      />
     </>
   );
 };
