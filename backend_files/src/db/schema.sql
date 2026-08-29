@@ -1,0 +1,91 @@
+-- ==============================================================================
+-- NexusPay Engine: Normalized Relational Database Schema (PostgreSQL Engine)
+-- High Concurrency, ACID Double-Entry Ledger, Idempotency & Money Movement
+-- Amounts are strictly stored as integer POISHA (1 BDT = 100 Poisha) in BIGINT
+-- ==============================================================================
+
+-- 1. Users Table (Demo profiles & standard auth)
+CREATE TABLE IF NOT EXISTS users (
+    id VARCHAR(64) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    phone VARCHAR(32) UNIQUE NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    avatar TEXT,
+    pin VARCHAR(64) NOT NULL DEFAULT '1234',
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 2. Wallets Table (One wallet per user with strict non-negative balance constraint)
+CREATE TABLE IF NOT EXISTS wallets (
+    id VARCHAR(64) PRIMARY KEY,
+    user_id VARCHAR(64) UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    currency VARCHAR(10) NOT NULL DEFAULT 'BDT',
+    balance BIGINT NOT NULL DEFAULT 0 CHECK (balance >= 0),
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'FROZEN', 'CLOSED')),
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 3. Transactions Table (High-level business movement record)
+CREATE TABLE IF NOT EXISTS transactions (
+    id VARCHAR(64) PRIMARY KEY,
+    reference_id VARCHAR(64) UNIQUE NOT NULL,
+    sender_wallet_id VARCHAR(64) REFERENCES wallets(id),
+    receiver_wallet_id VARCHAR(64) REFERENCES wallets(id),
+    type VARCHAR(32) NOT NULL CHECK (type IN ('TRANSFER', 'REQUEST_SETTLEMENT', 'SEED_FUNDING', 'BILL_SPLIT')),
+    amount BIGINT NOT NULL CHECK (amount > 0),
+    fee BIGINT NOT NULL DEFAULT 0 CHECK (fee >= 0),
+    note TEXT,
+    category VARCHAR(64) NOT NULL DEFAULT 'General',
+    status VARCHAR(20) NOT NULL DEFAULT 'SUCCESS' CHECK (status IN ('SUCCESS', 'FAILED', 'PENDING')),
+    idempotency_key VARCHAR(128) UNIQUE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 4. Ledger Entries Table (Immutable Double-Entry Bookkeeping)
+-- Invariant: Every transaction MUST have matched DEBIT and CREDIT entries with identical amounts
+CREATE TABLE IF NOT EXISTS ledger_entries (
+    id VARCHAR(64) PRIMARY KEY,
+    transaction_id VARCHAR(64) NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+    wallet_id VARCHAR(64) NOT NULL REFERENCES wallets(id) ON DELETE CASCADE,
+    entry_type VARCHAR(10) NOT NULL CHECK (entry_type IN ('DEBIT', 'CREDIT')),
+    amount BIGINT NOT NULL CHECK (amount > 0),
+    balance_after BIGINT NOT NULL CHECK (balance_after >= 0),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 5. Money Requests Table (P2P Invoices & Bill Requests)
+CREATE TABLE IF NOT EXISTS money_requests (
+    id VARCHAR(64) PRIMARY KEY,
+    requester_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    payer_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    amount BIGINT NOT NULL CHECK (amount > 0),
+    note TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'ACCEPTED', 'REJECTED', 'CANCELLED', 'EXPIRED')),
+    transaction_id VARCHAR(64) REFERENCES transactions(id),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TIMESTAMPTZ
+);
+
+-- 6. Idempotency Records Table (Prevents duplicate requests / double debits)
+CREATE TABLE IF NOT EXISTS idempotency_records (
+    key VARCHAR(128) PRIMARY KEY,
+    user_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    status_code INT NOT NULL,
+    response_body TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ==============================================================================
+-- Performance Indices
+-- ==============================================================================
+CREATE INDEX IF NOT EXISTS idx_wallets_user_id ON wallets(user_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_sender ON transactions(sender_wallet_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_receiver ON transactions(receiver_wallet_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON transactions(created_at);
+CREATE INDEX IF NOT EXISTS idx_transactions_idempotency ON transactions(idempotency_key);
+CREATE INDEX IF NOT EXISTS idx_ledger_wallet_id ON ledger_entries(wallet_id);
+CREATE INDEX IF NOT EXISTS idx_ledger_transaction_id ON ledger_entries(transaction_id);
+CREATE INDEX IF NOT EXISTS idx_ledger_created_at ON ledger_entries(created_at);
+CREATE INDEX IF NOT EXISTS idx_money_requests_requester ON money_requests(requester_id);
+CREATE INDEX IF NOT EXISTS idx_money_requests_payer ON money_requests(payer_id);
+CREATE INDEX IF NOT EXISTS idx_money_requests_status ON money_requests(status);
