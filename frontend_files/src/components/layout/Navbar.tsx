@@ -17,8 +17,6 @@ import {
   LogOut,
   Menu,
   Sparkles,
-  UserPlus,
-  LogIn,
   User,
   Settings
 } from 'lucide-react';
@@ -100,26 +98,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
           </div>
 
-          {/* When NOT Authenticated: Zero tabs, only Log In / Register buttons */}
-          {!isAuthenticated ? (
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => openAuthModal && openAuthModal('login')}
-                className="text-xs font-semibold text-slate-300 hover:text-white px-3 py-2 transition-colors flex items-center gap-1.5"
-              >
-                <LogIn className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Log In</span>
-              </button>
-              <button
-                onClick={() => openAuthModal && openAuthModal('register')}
-                className="text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-4 py-2 rounded-xl shadow-md shadow-emerald-950/40 transition-all flex items-center gap-1.5"
-              >
-                <UserPlus className="w-3.5 h-3.5" />
-                <span>Register</span>
-              </button>
-            </div>
-          ) : (
-            /* When Authenticated: Focused 4 Daily Core Tabs + Profile */
+          {/* When Authenticated: Focused 4 Daily Core Tabs + Profile */}
+          {isAuthenticated && (
             <>
               {/* Central Clean Nav Tabs */}
               <nav className="hidden md:flex items-center bg-slate-950/80 p-1.5 rounded-2xl border border-slate-800 shadow-inner">
