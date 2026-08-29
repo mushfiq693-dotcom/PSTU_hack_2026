@@ -30,7 +30,8 @@ export default {
         }
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        sans: ['"Plus Jakarta Sans"', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'monospace'],
       },
       keyframes: {
         flyMoney: {
@@ -50,8 +51,8 @@ export default {
         pulseGreen: 'pulseGreen 1.5s ease-out infinite'
       },
       boxShadow: {
-        'glow-emerald': '0 0 25px -5px rgba(16, 185, 129, 0.3)',
-        'glow-indigo': '0 0 25px -5px rgba(99, 102, 241, 0.3)',
+        'glow-emerald': '0 0 25px -5px rgba(16, 185, 129, 0.25)',
+        'glow-indigo': '0 0 25px -5px rgba(99, 102, 241, 0.25)',
       }
     },
   },

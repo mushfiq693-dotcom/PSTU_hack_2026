@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { TabType } from './types';
 import { Navbar } from './components/layout/Navbar';
 import { LandingPage } from './components/landing/LandingPage';
@@ -13,32 +13,45 @@ import { FastPayLogo } from './components/common/FastPayLogo';
 import { ShieldCheck } from 'lucide-react';
 
 const AppContent: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<TabType>('landing');
+  const { isAuthenticated } = useAuth();
+  const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+
+  const handleAuthSuccess = () => {
+    setActiveTab('dashboard');
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-[#090d16] text-slate-100 font-sans">
       
-      {/* Top Navbar with Persona Switcher */}
-      <Navbar activeTab={activeTab} setActiveTab={setActiveTab} />
+      {/* Top Navbar */}
+      <Navbar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+      />
 
       {/* Main Animated Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-7">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
-          >
-            {activeTab === 'landing' && <LandingPage setActiveTab={setActiveTab} />}
-            {activeTab === 'dashboard' && <Dashboard setActiveTab={setActiveTab} />}
-            {activeTab === 'send' && <SendMoneyView />}
-            {activeTab === 'requests' && <MoneyRequestsView />}
-            {activeTab === 'ledger' && <LedgerAuditView />}
-            {activeTab === 'stress' && <ConcurrencyStudio />}
-          </motion.div>
-        </AnimatePresence>
+        {!isAuthenticated ? (
+          /* Unauthenticated state: ONLY Landing Page with Create Account & Log In */
+          <LandingPage onAuthSuccess={handleAuthSuccess} />
+        ) : (
+          /* Authenticated state: Full Application Views */
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+            >
+              {activeTab === 'dashboard' && <Dashboard setActiveTab={setActiveTab} />}
+              {activeTab === 'send' && <SendMoneyView />}
+              {activeTab === 'requests' && <MoneyRequestsView />}
+              {activeTab === 'ledger' && <LedgerAuditView />}
+              {activeTab === 'stress' && <ConcurrencyStudio />}
+            </motion.div>
+          </AnimatePresence>
+        )}
       </main>
 
       {/* Footer */}

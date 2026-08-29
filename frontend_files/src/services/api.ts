@@ -11,11 +11,17 @@ const API_BASE = '/api';
 
 export class ApiService {
   private static getHeaders(idempotencyKey?: string): HeadersInit {
+    const token = localStorage.getItem('fastpay_jwt_token');
     const activeUserId = localStorage.getItem('nexuspay_active_user_id') || 'usr_shakib_01';
+
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'X-User-Id': activeUserId,
     };
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
 
     if (idempotencyKey) {
       headers['Idempotency-Key'] = idempotencyKey;
@@ -23,6 +29,103 @@ export class ApiService {
 
     return headers;
   }
+
+  // ========================================================
+  // Authentication & Phone OTP Verification
+  // ========================================================
+
+  public static async register(payload: {
+    name: string;
+    phone: string;
+    password: string;
+    email?: string;
+  }): Promise<{ success: boolean; message: string; phone: string; phone_verified: boolean; user?: any }> {
+    const res = await fetch(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || 'Registration failed');
+    return json;
+  }
+
+  public static async verifyOtp(payload: {
+    phone: string;
+    otp: string;
+  }): Promise<{ success: boolean; message: string; token: string; user: any; phone_verified: boolean }> {
+    const res = await fetch(`${API_BASE}/auth/verify-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || 'OTP verification failed');
+    if (json.token) {
+      localStorage.setItem('fastpay_jwt_token', json.token);
+      if (json.user?.id) {
+        localStorage.setItem('nexuspay_active_user_id', json.user.id);
+      }
+    }
+    return json;
+  }
+
+  public static async resendOtp(payload: {
+    phone: string;
+  }): Promise<{ success: boolean; message: string; phone: string }> {
+    const res = await fetch(`${API_BASE}/auth/resend-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || 'Failed to resend OTP');
+    return json;
+  }
+
+  public static async login(payload: {
+    phone: string;
+    password: string;
+  }): Promise<{ success: boolean; message: string; token: string; user: any; phone_verified: boolean }> {
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || 'Login failed');
+    if (json.token) {
+      localStorage.setItem('fastpay_jwt_token', json.token);
+      if (json.user?.id) {
+        localStorage.setItem('nexuspay_active_user_id', json.user.id);
+      }
+    }
+    return json;
+  }
+
+  public static async logout(): Promise<void> {
+    try {
+      await fetch(`${API_BASE}/auth/logout`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+      });
+    } finally {
+      localStorage.removeItem('fastpay_jwt_token');
+    }
+  }
+
+  public static async getMe(): Promise<UserWithWallet> {
+    const res = await fetch(`${API_BASE}/auth/me`, {
+      headers: this.getHeaders(),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || 'Failed to fetch user profile');
+    return json.data;
+  }
+
+  // ========================================================
+  // Existing Core Money Movement & Ledger APIs
+  // ========================================================
 
   public static async getUsers(): Promise<UserWithWallet[]> {
     const res = await fetch(`${API_BASE}/users`, {

@@ -6,9 +6,12 @@ interface AuthContextType {
   currentUser: UserWithWallet | null;
   allUsers: UserWithWallet[];
   isLoading: boolean;
+  isAuthenticated: boolean;
   switchUser: (userId: string) => Promise<void>;
   refreshUserData: () => Promise<void>;
   resetDemoData: () => Promise<void>;
+  logout: () => void;
+  setAuthenticatedUser: (user: UserWithWallet) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -23,12 +26,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const users = await ApiService.getUsers();
       setAllUsers(users);
 
-      const savedUserId = localStorage.getItem('nexuspay_active_user_id') || 'usr_shakib_01';
-      const active = users.find((u) => u.id === savedUserId) || users[0] || null;
+      const savedToken = localStorage.getItem('fastpay_jwt_token');
+      const savedUserId = localStorage.getItem('nexuspay_active_user_id');
 
-      if (active) {
-        localStorage.setItem('nexuspay_active_user_id', active.id);
-        setCurrentUser(active);
+      if (savedToken || savedUserId) {
+        const active = users.find((u) => u.id === savedUserId) || users[0] || null;
+        if (active) {
+          setCurrentUser(active);
+        }
+      } else {
+        setCurrentUser(null);
       }
     } catch (err) {
       console.error('Failed to load user session data:', err);
@@ -52,6 +59,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const setAuthenticatedUser = (user: UserWithWallet) => {
+    setCurrentUser(user);
+    localStorage.setItem('nexuspay_active_user_id', user.id);
+  };
+
+  const logout = () => {
+    localStorage.removeItem('fastpay_jwt_token');
+    localStorage.removeItem('nexuspay_active_user_id');
+    setCurrentUser(null);
+  };
+
   const resetDemoData = async () => {
     setIsLoading(true);
     try {
@@ -68,15 +86,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     refreshUserData();
   }, [refreshUserData]);
 
+  const isAuthenticated = currentUser !== null;
+
   return (
     <AuthContext.Provider
       value={{
         currentUser,
         allUsers,
         isLoading,
+        isAuthenticated,
         switchUser,
         refreshUserData,
         resetDemoData,
+        logout,
+        setAuthenticatedUser,
       }}
     >
       {children}

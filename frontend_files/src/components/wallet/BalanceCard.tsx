@@ -5,7 +5,6 @@ import { TabType } from '../../types';
 import {
   ArrowUpRight,
   ArrowDownLeft,
-  Cpu,
   Layers,
   ShieldCheck,
   Sparkles,
@@ -24,9 +23,9 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({ setActiveTab }) => {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 15 }}
+      initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
+      transition={{ duration: 0.25 }}
       className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900/95 to-slate-950 border border-slate-800/80 p-6 sm:p-8 shadow-2xl glow-emerald-box"
     >
       {/* Subtle background ambient gradients */}
@@ -86,8 +85,8 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({ setActiveTab }) => {
         </div>
       </div>
 
-      {/* Action Buttons Matrix */}
-      <div className="relative z-10 grid grid-cols-2 sm:grid-cols-4 gap-3 pt-5 border-t border-slate-800/80">
+      {/* Clean 3-Action Buttons Matrix */}
+      <div className="relative z-10 grid grid-cols-1 sm:grid-cols-3 gap-3 pt-5 border-t border-slate-800/80">
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
@@ -106,16 +105,6 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({ setActiveTab }) => {
         >
           <ArrowDownLeft className="w-4 h-4 text-teal-400" />
           <span>Request Money</span>
-        </motion.button>
-
-        <motion.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={() => setActiveTab('stress')}
-          className="flex items-center justify-center gap-2 p-3.5 rounded-2xl bg-indigo-950/60 hover:bg-indigo-900/60 text-indigo-300 hover:text-white border border-indigo-700/50 font-bold text-xs sm:text-sm transition-all"
-        >
-          <Cpu className="w-4 h-4 text-indigo-400" />
-          <span>Concurrency Lab</span>
         </motion.button>
 
         <motion.button
