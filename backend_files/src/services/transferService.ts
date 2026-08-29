@@ -4,6 +4,7 @@ import { Transaction, TransactionType } from '../types';
 import { Logger } from '../utils/logger';
 import { MemoryCache } from '../utils/cache';
 import { NotificationService } from './notificationService';
+import { FraudEngine } from './fraudEngine';
 
 export interface ExecuteTransferParams {
   senderId: string;
@@ -306,6 +307,26 @@ export class TransferService {
         required: amountPoisha,
         status: 'SUFFICIENT',
       });
+
+      // 2.2 Real-time Fraud Detection & Risk Analysis (Excluding automated benchmark stress bursts)
+      if (category !== 'Stress Simulation') {
+        const fraudCheck = await FraudEngine.evaluateTransfer({
+          senderId,
+          receiverId: resolvedReceiverId,
+          amountPoisha,
+          currentBalancePoisha: currentSenderBalance,
+          requestId,
+        });
+
+        if (fraudCheck.isBlocked) {
+          const error: any = new Error(
+            `Transaction blocked by FastPay Fraud Engine (Risk Score: ${fraudCheck.riskScore}/100, Reason: ${fraudCheck.riskFactors.join(', ')}).`
+          );
+          error.statusCode = 403;
+          error.errorCode = 'FRAUD_SUSPICION_BLOCKED';
+          throw error;
+        }
+      }
 
       const senderNewBalance = currentSenderBalance - amountPoisha;
       const receiverNewBalance = currentReceiverBalance + amountPoisha;
