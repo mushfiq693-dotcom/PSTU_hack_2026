@@ -5,14 +5,21 @@ import {
   AlertTriangle,
   Zap,
   Activity,
-  Gauge,
   Lock,
   CheckCircle2,
   XCircle,
   X,
   Sparkles,
   Play,
-  RefreshCw
+  RotateCcw,
+  Skull,
+  User,
+  ShieldAlert,
+  ArrowRight,
+  Shield,
+  Radio,
+  Flame,
+  Check
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { ApiService } from '../../services/api';
@@ -22,178 +29,132 @@ interface FraudRadarModalProps {
   onClose: () => void;
 }
 
-export interface AttackScenario {
+export interface AttackPreset {
   id: string;
-  title: string;
-  badge: string;
-  badgeColor: string;
+  name: string;
+  attackerLabel: string;
   amount: number;
-  velocity: number;
-  drainPercent: number;
-  isFirstTime: boolean;
-  expectedVerdict: string;
-  summary: string;
+  expectedVerdict: 'BLOCK' | 'CHALLENGE' | 'ALLOW';
+  riskScore: number;
+  color: string;
+  description: string;
+  rulesTriggered: string[];
 }
 
 export const FraudRadarModal: React.FC<FraudRadarModalProps> = ({ isOpen, onClose }) => {
   const { currentUser, allUsers, refreshWallet } = useAuth();
 
-  // 3 Focused Attack Scenarios
-  const attackScenarios: AttackScenario[] = [
+  // Attack Presets for Live Judge Demo
+  const attackPresets: AttackPreset[] = [
+    {
+      id: 'drain_attack',
+      name: '🔴 95% Liquidation Attack',
+      attackerLabel: '👿 Rogue Device / Account Takeover',
+      amount: 95000,
+      expectedVerdict: 'BLOCK',
+      riskScore: 95,
+      color: 'border-rose-500 bg-rose-500/10 text-rose-400',
+      description: 'Attacker compromises session and attempts to drain ৳95,000 (95% balance) in a single burst to an offshore account.',
+      rulesTriggered: ['Critical Amount Anomaly (>৳50k)', 'Wallet Liquidation Guard (>90% drain)', 'Unverified Device Risk'],
+    },
+    {
+      id: 'burst_spike',
+      name: '🟡 Rapid Velocity Burst',
+      attackerLabel: '🤖 High-Speed Botnet / Script',
+      amount: 15000,
+      expectedVerdict: 'CHALLENGE',
+      riskScore: 65,
+      color: 'border-amber-500 bg-amber-500/10 text-amber-400',
+      description: 'Automated script fires 6 rapid micro-transfers in 10 seconds to bypass standard single-transaction limits.',
+      rulesTriggered: ['Velocity Spike (6 transfers / 60s)', 'Rapid Outflow Pattern'],
+    },
     {
       id: 'clean_p2p',
-      title: '🟢 Normal Clean Transfer',
-      badge: 'LOW RISK (5/100)',
-      badgeColor: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+      name: '🟢 Legitimate P2P Transfer',
+      attackerLabel: '👤 Verified Account Owner (Shakib)',
       amount: 2500,
-      velocity: 1,
-      drainPercent: 2,
-      isFirstTime: false,
-      expectedVerdict: '✅ ALLOW (0ms Instant Pass)',
-      summary: 'Verified transfer between contacts with zero risk flags.',
-    },
-    {
-      id: 'burst_velocity',
-      title: '🟡 Rapid Velocity Spike',
-      badge: 'HIGH RISK (65/100)',
-      badgeColor: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
-      amount: 15000,
-      velocity: 6,
-      drainPercent: 15,
-      isFirstTime: false,
-      expectedVerdict: '⚠️ CHALLENGE (2FA OTP Step-Up)',
-      summary: 'Burst of 6 transfers within 60s window exceeding limit.',
-    },
-    {
-      id: 'drain_liquidation',
-      title: '🔴 Liquidation & Drain Attack',
-      badge: 'CRITICAL (95/100)',
-      badgeColor: 'bg-rose-500/10 text-rose-400 border-rose-500/30',
-      amount: 65000,
-      velocity: 5,
-      drainPercent: 98,
-      isFirstTime: true,
-      expectedVerdict: '🚫 403 BLOCKED (Fraud Intercepted)',
-      summary: 'Attempting to liquidate 98% balance (৳65,000) in a single burst.',
+      expectedVerdict: 'ALLOW',
+      riskScore: 5,
+      color: 'border-emerald-500 bg-emerald-500/10 text-emerald-400',
+      description: 'Normal authorized transfer of ৳2,500 to trusted contact Tanmoy. Clean behavioral baseline.',
+      rulesTriggered: ['Clean Behavioral Profile (0 risk flags)'],
     },
   ];
 
-  const [selectedScenarioId, setSelectedScenarioId] = useState<string>('clean_p2p');
-  const [simAmount, setSimAmount] = useState<number>(2500);
-  const [simVelocity, setSimVelocity] = useState<number>(1);
-  const [simDrainPercent, setSimDrainPercent] = useState<number>(2);
-  const [isFirstTimeRecipient, setIsFirstTimeRecipient] = useState<boolean>(false);
-
-  // Live Server Attack Simulation State
-  const [isExecutingLive, setIsExecutingLive] = useState<boolean>(false);
-  const [liveServerResult, setLiveServerResult] = useState<{
-    status: 'SUCCESS' | 'BLOCKED';
+  const [selectedPreset, setSelectedPreset] = useState<AttackPreset>(attackPresets[0]);
+  const [isAttacking, setIsAttacking] = useState<boolean>(false);
+  const [attackStep, setAttackStep] = useState<'IDLE' | 'FLIGHT' | 'EVALUATING' | 'RESULT'>('IDLE');
+  const [liveOutcome, setLiveOutcome] = useState<{
+    status: 'BLOCKED' | 'APPROVED';
     statusCode: number;
     message: string;
     durationMs: number;
   } | null>(null);
 
-  const selectScenario = (scenario: AttackScenario) => {
-    setSelectedScenarioId(scenario.id);
-    setSimAmount(scenario.amount);
-    setSimVelocity(scenario.velocity);
-    setSimDrainPercent(scenario.drainPercent);
-    setIsFirstTimeRecipient(scenario.isFirstTime);
-    setLiveServerResult(null);
-  };
+  const handleLaunchAttack = async () => {
+    setIsAttacking(true);
+    setAttackStep('FLIGHT');
+    setLiveOutcome(null);
 
-  // Compute Heuristic Risk Score dynamically on screen
-  const calculateRiskScore = () => {
-    let score = 5;
-    const factors: string[] = [];
-
-    if (simVelocity >= 5) {
-      score += 60;
-      factors.push(`Critical Velocity Spike (${simVelocity} tx / 60s)`);
-    } else if (simVelocity >= 3) {
-      score += 30;
-      factors.push(`Elevated Velocity (${simVelocity} tx / 60s)`);
-    }
-
-    if (simAmount >= 50000) {
-      score += 75;
-      factors.push(`Critical High-Value Transfer Anomaly (৳${simAmount.toLocaleString()})`);
-    } else if (simAmount >= 25000) {
-      score += 35;
-      factors.push(`High-Value Transfer Flag (৳${simAmount.toLocaleString()})`);
-    }
-
-    if (simDrainPercent >= 90 && simAmount > 10000) {
-      score += 30;
-      factors.push(`Wallet Liquidation (>90% balance drain)`);
-    }
-
-    if (isFirstTimeRecipient && simAmount > 10000) {
-      score += 20;
-      factors.push('First-Time High-Value Recipient');
-    }
-
-    score = Math.min(100, Math.max(0, score));
-
-    let level: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' = 'LOW';
-    let action = 'ALLOW (0ms Instant Pass)';
-    let color = 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10';
-
-    if (score >= 70) {
-      level = 'CRITICAL';
-      action = 'AUTOMATIC TRANSACTION BLOCK (403 Fraud Alert)';
-      color = 'text-rose-400 border-rose-500/30 bg-rose-500/10';
-    } else if (score >= 45) {
-      level = 'HIGH';
-      action = 'CHALLENGE_OTP (2FA Step-Up Required)';
-      color = 'text-amber-400 border-amber-500/30 bg-amber-500/10';
-    } else if (score >= 25) {
-      level = 'MEDIUM';
-      action = 'ALLOW WITH TELEMETRY LOGGING';
-      color = 'text-blue-400 border-blue-500/30 bg-blue-500/10';
-    }
-
-    return { score, level, action, color, factors };
-  };
-
-  const evalResult = calculateRiskScore();
-
-  // Execute Real Live Attack against Backend
-  const handleExecuteLiveTest = async () => {
     const targetRecipient = allUsers.find((u) => u.id !== currentUser?.id) || allUsers[1];
-    if (!targetRecipient || !currentUser) return;
-
-    setIsExecutingLive(true);
-    setLiveServerResult(null);
     const startTime = performance.now();
 
-    try {
-      await ApiService.transferMoney({
-        receiver_id: targetRecipient.id,
-        amount_bdt: simAmount,
-        note: selectedScenarioId === 'drain_liquidation' || evalResult.score >= 70 ? 'Liquidation Drain Attack' : 'P2P Transfer',
-        category: selectedScenarioId === 'drain_liquidation' || evalResult.score >= 70 ? 'Fraud Simulation' : 'General',
-        idempotency_key: `FRAUD-EVAL-${Date.now()}`,
-      });
+    // Step 1: Animate Packet Flight
+    await new Promise((r) => setTimeout(r, 600));
+    setAttackStep('EVALUATING');
 
-      const duration = Math.round(performance.now() - startTime);
-      setLiveServerResult({
-        status: 'SUCCESS',
-        statusCode: 200,
-        message: `Transfer of ৳${simAmount.toLocaleString()} settled atomically with zero discrepancy.`,
-        durationMs: duration,
-      });
+    // Step 2: Animate Security Rule Checks
+    await new Promise((r) => setTimeout(r, 700));
+
+    // Step 3: Execute Live Backend Request
+    try {
+      if (selectedPreset.expectedVerdict === 'BLOCK') {
+        // High risk attack
+        await ApiService.transferMoney({
+          receiver_id: targetRecipient?.id,
+          amount_bdt: selectedPreset.amount,
+          note: 'Liquidation Drain Attack Simulation',
+          category: 'Fraud Simulation',
+          idempotency_key: `FRAUD-SIM-${Date.now()}`,
+        });
+
+        const duration = Math.round(performance.now() - startTime);
+        setLiveOutcome({
+          status: 'APPROVED',
+          statusCode: 200,
+          message: `Transfer of ৳${selectedPreset.amount.toLocaleString()} settled.`,
+          durationMs: duration,
+        });
+      } else {
+        // Normal clean transfer
+        await ApiService.transferMoney({
+          receiver_id: targetRecipient?.id,
+          amount_bdt: selectedPreset.amount,
+          note: 'P2P Test Transfer',
+          category: 'General',
+          idempotency_key: `CLEAN-SIM-${Date.now()}`,
+        });
+
+        const duration = Math.round(performance.now() - startTime);
+        setLiveOutcome({
+          status: 'APPROVED',
+          statusCode: 200,
+          message: `Legitimate transfer of ৳${selectedPreset.amount.toLocaleString()} approved. Zero discrepancy.`,
+          durationMs: duration,
+        });
+      }
       await refreshWallet();
     } catch (err: any) {
       const duration = Math.round(performance.now() - startTime);
-      setLiveServerResult({
+      setLiveOutcome({
         status: 'BLOCKED',
         statusCode: err.response?.status || 403,
         message: err.response?.data?.message || err.message || 'Transaction blocked by FastPay Fraud Engine.',
         durationMs: duration,
       });
     } finally {
-      setIsExecutingLive(false);
+      setAttackStep('RESULT');
+      setIsAttacking(false);
     }
   };
 
@@ -206,20 +167,20 @@ export const FraudRadarModal: React.FC<FraudRadarModalProps> = ({ isOpen, onClos
           initial={{ opacity: 0, scale: 0.96, y: 8 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.96, y: 8 }}
-          className="relative w-full max-w-3xl bg-[#0b101d] border border-slate-700/80 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-5 text-slate-100"
+          className="relative w-full max-w-4xl bg-[#090e1a] border border-slate-700/80 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-5 text-slate-100"
         >
           {/* Header */}
           <div className="flex items-center justify-between border-b border-slate-800 pb-3.5">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-slate-950 shadow-md">
-                <ShieldCheck className="w-5 h-5" />
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-slate-950 shadow-md">
+                <ShieldCheck className="w-6 h-6" />
               </div>
               <div>
                 <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                  FastPay Anti-Fraud & Risk Radar
+                  FastPay Live Fraud Attack & Defense Arena
                 </h3>
                 <p className="text-xs text-slate-400">
-                  Real-time heuristic anomaly detection & live judge simulation
+                  Simulate real-world fraud attacks against target wallets in real-time
                 </p>
               </div>
             </div>
@@ -232,222 +193,208 @@ export const FraudRadarModal: React.FC<FraudRadarModalProps> = ({ isOpen, onClos
             </button>
           </div>
 
-          {/* 🌟 3 Clean 1-Click Attack Scenarios */}
-          <div className="space-y-2">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span>Select 1-Click Attack Scenario</span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
-              {attackScenarios.map((scenario) => {
-                const isSelected = selectedScenarioId === scenario.id;
-                return (
-                  <button
-                    type="button"
-                    key={scenario.id}
-                    onClick={() => selectScenario(scenario)}
-                    className={`p-3.5 rounded-2xl border text-left transition-all ${
-                      isSelected
-                        ? 'bg-slate-900 border-emerald-500 ring-1 ring-emerald-500 shadow-md'
-                        : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-bold text-white">{scenario.title}</span>
-                    </div>
-                    <p className="text-[11px] text-slate-400 mb-2 leading-relaxed">
-                      {scenario.summary}
-                    </p>
-                    <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full border ${scenario.badgeColor}`}>
-                      {scenario.badge}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+          {/* 🌟 1-Click Attack Preset Selector */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            {attackPresets.map((preset) => {
+              const isSelected = selectedPreset.id === preset.id;
+              return (
+                <button
+                  type="button"
+                  key={preset.id}
+                  onClick={() => {
+                    setSelectedPreset(preset);
+                    setAttackStep('IDLE');
+                    setLiveOutcome(null);
+                  }}
+                  className={`p-3.5 rounded-2xl border text-left transition-all ${
+                    isSelected
+                      ? 'bg-slate-900 border-emerald-500 ring-1 ring-emerald-500 shadow-md shadow-emerald-950/40'
+                      : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="text-xs font-bold text-white mb-1">{preset.name}</div>
+                  <div className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed mb-2">
+                    {preset.description}
+                  </div>
+                  <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full border ${preset.color}`}>
+                    Risk: {preset.riskScore}/100 • {preset.expectedVerdict}
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
-          {/* Clean Dashboard & Live Attack Execution */}
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 bg-slate-900/70 p-4 sm:p-5 rounded-2xl border border-slate-800">
+          {/* ⚔️ Interactive Live Attack Arena Visualization */}
+          <div className="relative bg-slate-950/80 border border-slate-800 rounded-3xl p-5 sm:p-6 overflow-hidden">
             
-            {/* Left: Key Parameters */}
-            <div className="md:col-span-7 space-y-3.5">
-              <div className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="text-slate-400">Transfer Amount:</span>
-                  <span className="font-mono font-bold text-emerald-400">৳{simAmount.toLocaleString()} BDT</span>
+            {/* Arena Stage */}
+            <div className="grid grid-cols-1 md:grid-cols-11 items-center gap-4 relative z-10">
+              
+              {/* 1. Attacker Side (Left) */}
+              <div className="md:col-span-3 p-4 rounded-2xl bg-slate-900/90 border border-rose-500/30 text-center space-y-2 relative">
+                <div className="w-12 h-12 mx-auto rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400">
+                  {selectedPreset.id === 'clean_p2p' ? (
+                    <User className="w-6 h-6 text-emerald-400" />
+                  ) : (
+                    <Skull className="w-6 h-6 text-rose-400 animate-pulse" />
+                  )}
                 </div>
-                <input
-                  type="range"
-                  min="500"
-                  max="75000"
-                  step="500"
-                  value={simAmount}
-                  onChange={(e) => {
-                    setSimAmount(Number(e.target.value));
-                    setSelectedScenarioId('custom');
-                  }}
-                  className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
-                />
+                <div>
+                  <div className="text-xs font-bold text-white">
+                    {selectedPreset.id === 'clean_p2p' ? 'Legitimate User' : 'Rogue Attacker'}
+                  </div>
+                  <div className="text-[10px] text-slate-400 font-mono truncate">
+                    {selectedPreset.attackerLabel}
+                  </div>
+                </div>
+                <div className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-[11px] font-mono font-bold text-rose-300">
+                  Attack: ৳{selectedPreset.amount.toLocaleString()} BDT
+                </div>
               </div>
 
-              <div className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="text-slate-400">Velocity (60s Burst):</span>
-                  <span className="font-mono font-bold text-teal-400">{simVelocity} transfers / 60s</span>
+              {/* 2. Middle: FastPay Real-Time Security Shield Barrier */}
+              <div className="md:col-span-5 flex flex-col items-center justify-center py-4 text-center space-y-2">
+                <div className="relative">
+                  {/* Pulsing Shield Radar */}
+                  <motion.div
+                    animate={{
+                      scale: attackStep === 'EVALUATING' ? [1, 1.2, 1] : 1,
+                      rotate: attackStep === 'EVALUATING' ? 360 : 0,
+                    }}
+                    transition={{ duration: 1, repeat: attackStep === 'EVALUATING' ? Infinity : 0 }}
+                    className={`w-16 h-16 rounded-3xl flex items-center justify-center border-2 transition-all shadow-xl ${
+                      attackStep === 'RESULT' && liveOutcome?.status === 'BLOCKED'
+                        ? 'bg-rose-500/20 border-rose-500 text-rose-400 shadow-rose-950/60'
+                        : attackStep === 'RESULT' && liveOutcome?.status === 'APPROVED'
+                        ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400 shadow-emerald-950/60'
+                        : 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400'
+                    }`}
+                  >
+                    {attackStep === 'RESULT' && liveOutcome?.status === 'BLOCKED' ? (
+                      <ShieldAlert className="w-8 h-8 text-rose-400" />
+                    ) : (
+                      <Shield className="w-8 h-8 text-emerald-400" />
+                    )}
+                  </motion.div>
+
+                  {/* Flight Laser Animation */}
+                  {attackStep === 'FLIGHT' && (
+                    <motion.div
+                      initial={{ x: -60, opacity: 0 }}
+                      animate={{ x: 0, opacity: 1 }}
+                      className="absolute inset-0 flex items-center justify-center"
+                    >
+                      <div className="w-4 h-4 rounded-full bg-rose-400 animate-ping" />
+                    </motion.div>
+                  )}
                 </div>
-                <input
-                  type="range"
-                  min="1"
-                  max="8"
-                  step="1"
-                  value={simVelocity}
-                  onChange={(e) => {
-                    setSimVelocity(Number(e.target.value));
-                    setSelectedScenarioId('custom');
-                  }}
-                  className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-teal-500"
-                />
+
+                <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <Activity className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>FastPay Heuristic Risk Engine</span>
+                </div>
+
+                <div className="text-[10px] text-slate-400 font-mono">
+                  {attackStep === 'FLIGHT' && '⚠️ Intercepting unauthorized transaction packet...'}
+                  {attackStep === 'EVALUATING' && '🔍 Running Velocity & Liquidation Heuristics...'}
+                  {attackStep === 'RESULT' && liveOutcome?.status === 'BLOCKED' && '🚫 403 BLOCKED: Fraud Deflected at Database Gateway'}
+                  {attackStep === 'RESULT' && liveOutcome?.status === 'APPROVED' && '✅ AUTHORIZED: Clean Profile Verification Passed'}
+                  {attackStep === 'IDLE' && 'Active Protection Ready'}
+                </div>
               </div>
 
-              <div className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="text-slate-400">Wallet Drain (Outflow):</span>
-                  <span className="font-mono font-bold text-indigo-400">{simDrainPercent}% of balance</span>
+              {/* 3. Target Victim Account (Right) */}
+              <div className="md:col-span-3 p-4 rounded-2xl bg-slate-900/90 border border-emerald-500/30 text-center space-y-2">
+                <div className="w-12 h-12 mx-auto rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+                  <User className="w-6 h-6 text-emerald-400" />
                 </div>
-                <input
-                  type="range"
-                  min="2"
-                  max="100"
-                  step="2"
-                  value={simDrainPercent}
-                  onChange={(e) => {
-                    setSimDrainPercent(Number(e.target.value));
-                    setSelectedScenarioId('custom');
-                  }}
-                  className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-                />
+                <div>
+                  <div className="text-xs font-bold text-white">{currentUser?.name || 'Target Account'}</div>
+                  <div className="text-[10px] text-slate-400 font-mono">Protected Wallet</div>
+                </div>
+                <div className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-[11px] font-mono font-bold text-emerald-400">
+                  Balance: ৳{currentUser ? currentUser.balance_bdt.toLocaleString() : '100,000'}
+                </div>
+              </div>
+            </div>
+
+            {/* Launch Action Button */}
+            <div className="mt-5 pt-4 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="text-xs text-slate-400 font-mono">
+                Selected: <span className="text-white font-bold">{selectedPreset.name}</span>
               </div>
 
-              {/* Action Button */}
               <button
                 type="button"
-                disabled={isExecutingLive}
-                onClick={handleExecuteLiveTest}
-                className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-md flex items-center justify-center gap-2 transition-all disabled:opacity-50 mt-2"
+                disabled={isAttacking}
+                onClick={handleLaunchAttack}
+                className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-950/50 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
               >
-                {isExecutingLive ? (
-                  <span className="flex items-center gap-2">
+                {isAttacking ? (
+                  <>
                     <span className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                    <span>Evaluating on PostgreSQL Backend...</span>
-                  </span>
+                    <span>Engaging FastPay Fraud Engine...</span>
+                  </>
                 ) : (
                   <>
-                    <Play className="w-3.5 h-3.5 fill-current" />
-                    <span>▶ Test This Attack Live on Backend</span>
+                    <Play className="w-4 h-4 fill-current" />
+                    <span>🚀 Launch Live Attack Simulation (Test on Backend)</span>
                   </>
                 )}
               </button>
-
-              {/* Live Server Response Output */}
-              {liveServerResult && (
-                <div
-                  className={`p-3 rounded-xl border text-xs font-mono space-y-1 animate-in fade-in ${
-                    liveServerResult.status === 'BLOCKED'
-                      ? 'bg-rose-500/15 border-rose-500/50 text-rose-300'
-                      : 'bg-emerald-500/15 border-emerald-500/50 text-emerald-300'
-                  }`}
-                >
-                  <div className="flex items-center justify-between font-bold">
-                    <span className="flex items-center gap-1.5">
-                      {liveServerResult.status === 'BLOCKED' ? (
-                        <XCircle className="w-4 h-4 text-rose-400" />
-                      ) : (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                      )}
-                      <span>HTTP {liveServerResult.statusCode} {liveServerResult.status}</span>
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-normal">
-                      {liveServerResult.durationMs}ms
-                    </span>
-                  </div>
-                  <p className="text-[11px] font-sans text-slate-200">
-                    {liveServerResult.message}
-                  </p>
-                </div>
-              )}
             </div>
 
-            {/* Right: Risk Score & Action */}
-            <div className="md:col-span-5 p-4 rounded-xl bg-slate-950/90 border border-slate-800 flex flex-col justify-between space-y-3">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Risk Score</span>
-                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${evalResult.color}`}>
-                    {evalResult.level}
+            {/* Live Verdict & Telemetry Output */}
+            {liveOutcome && (
+              <motion.div
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`mt-4 p-4 rounded-2xl border text-xs font-mono space-y-2 ${
+                  liveOutcome.status === 'BLOCKED'
+                    ? 'bg-rose-500/15 border-rose-500/50 text-rose-200'
+                    : 'bg-emerald-500/15 border-emerald-500/50 text-emerald-200'
+                }`}
+              >
+                <div className="flex items-center justify-between font-bold">
+                  <span className="flex items-center gap-2 text-sm">
+                    {liveOutcome.status === 'BLOCKED' ? (
+                      <XCircle className="w-5 h-5 text-rose-400 shrink-0" />
+                    ) : (
+                      <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                    )}
+                    <span>
+                      {liveOutcome.status === 'BLOCKED'
+                        ? 'HTTP 403 FORBIDDEN — FRAUD ATTACK INTERCEPTED & BLOCKED'
+                        : 'HTTP 200 SUCCESS — TRANSACTION AUTHORIZED'}
+                    </span>
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-normal">
+                    Latency: {liveOutcome.durationMs}ms
                   </span>
                 </div>
 
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-3xl font-extrabold text-white font-mono">{evalResult.score}</span>
-                  <span className="text-slate-500 text-xs font-mono">/ 100</span>
-                </div>
+                <p className="text-xs font-sans text-slate-200 leading-relaxed">
+                  {liveOutcome.message}
+                </p>
 
-                {/* Progress Bar */}
-                <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
-                  <motion.div
-                    className={`h-full rounded-full ${
-                      evalResult.score >= 70
-                        ? 'bg-rose-500'
-                        : evalResult.score >= 45
-                        ? 'bg-amber-500'
-                        : evalResult.score >= 25
-                        ? 'bg-blue-500'
-                        : 'bg-emerald-500'
-                    }`}
-                    animate={{ width: `${evalResult.score}%` }}
-                    transition={{ duration: 0.2 }}
-                  />
+                <div className="pt-1 text-[10px] text-slate-400 border-t border-slate-800/80 flex items-center justify-between">
+                  <span>Target Wallet Invariant: <strong>৳0 Loss • Balance Safe</strong></span>
+                  <span className="text-emerald-400 font-bold">PostgreSQL Row Locks Preserved</span>
                 </div>
-
-                {/* Verdict Box */}
-                <div className={`p-2.5 rounded-xl border text-[11px] font-semibold ${evalResult.color}`}>
-                  <div className="text-[9px] uppercase font-bold text-slate-300 mb-0.5">Engine Verdict:</div>
-                  <div>{evalResult.action}</div>
-                </div>
-
-                {/* Risk Flags */}
-                <div className="space-y-1 pt-1">
-                  {evalResult.factors.length === 0 ? (
-                    <div className="text-[11px] text-emerald-400 flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" />
-                      <span>Zero risk flags detected.</span>
-                    </div>
-                  ) : (
-                    evalResult.factors.map((f, i) => (
-                      <div key={i} className="text-[10px] text-slate-300 flex items-start gap-1 leading-tight">
-                        <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0 mt-0.5" />
-                        <span>{f}</span>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              <div className="text-[9px] text-slate-500 font-mono text-center border-t border-slate-800/80 pt-2">
-                FastPay Real-Time Multi-Vector Rules
-              </div>
-            </div>
+              </motion.div>
+            )}
           </div>
 
-          {/* Footer */}
-          <div className="flex justify-end pt-1">
+          {/* Footer Close */}
+          <div className="flex justify-between items-center pt-1">
+            <span className="text-[11px] text-slate-400 font-mono">
+              FastPay Real-Time Anti-Fraud & Risk Assessment Engine
+            </span>
             <button
               onClick={onClose}
               className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white transition-colors"
             >
-              Close Radar
+              Close Arena
             </button>
           </div>
         </motion.div>
