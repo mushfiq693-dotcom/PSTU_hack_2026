@@ -11,7 +11,7 @@ export class AuthController {
   public static async register(req: Request, res: Response, next: NextFunction): Promise<void> {
     const requestId = req.requestId;
     try {
-      const { name, phone, password, email } = req.body;
+      const { name, phone, password, email, avatar } = req.body;
 
       const result = await AuthService.register(
         {
@@ -19,6 +19,7 @@ export class AuthController {
           phone,
           password,
           email,
+          avatar,
         },
         requestId
       );
@@ -193,6 +194,45 @@ export class AuthController {
         success: false,
         error_code: 'PROFILE_FETCH_ERROR',
         message: err.message,
+      });
+    }
+  }
+
+  /**
+   * PUT /api/auth/profile
+   * Updates current user's profile info (name, email, avatar)
+   */
+  public static async updateProfile(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    const requestId = req.requestId;
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        (res as any).locals.errorCode = 'UNAUTHORIZED';
+        res.status(401).json({
+          success: false,
+          error_code: 'UNAUTHORIZED',
+          message: 'Authentication required.',
+        });
+        return;
+      }
+
+      const { name, email, avatar } = req.body;
+      const updatedProfile = await AuthService.updateProfile(userId, { name, email, avatar }, requestId);
+
+      res.status(200).json({
+        success: true,
+        message: 'Profile updated successfully.',
+        data: updatedProfile,
+      });
+    } catch (err: any) {
+      const statusCode = err.statusCode || 500;
+      const errorCode = err.errorCode || 'PROFILE_UPDATE_FAILED';
+      (res as any).locals.errorCode = errorCode;
+
+      res.status(statusCode).json({
+        success: false,
+        error_code: errorCode,
+        message: err.message || 'Failed to update profile.',
       });
     }
   }

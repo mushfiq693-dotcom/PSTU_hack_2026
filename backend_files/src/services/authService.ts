@@ -71,12 +71,13 @@ export class AuthService {
    * Registers a new user account with phone_verified = false and triggers OTP dispatch
    */
   public static async register(dto: RegisterDto, requestId?: string): Promise<AuthResponse> {
-    const { name, phone: rawPhone, password, email } = dto;
+    const { name, phone: rawPhone, password, email, avatar } = dto;
 
     Logger.info('AUTH', 'REGISTER_START', 'Initiating user registration', {
       requestId,
       rawPhone,
       hasEmail: !!email,
+      hasAvatar: !!avatar,
     });
 
     // 1. Validation
@@ -119,6 +120,7 @@ export class AuthService {
     );
 
     let userId: string;
+    const chosenAvatar = avatar?.trim() || `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80`;
 
     if (existingRes.rows.length > 0) {
       const existingUser = existingRes.rows[0];
@@ -141,21 +143,20 @@ export class AuthService {
 
       await pool.query(
         `UPDATE users 
-         SET name = $1, password_hash = $2, email = $3, created_at = CURRENT_TIMESTAMP 
-         WHERE id = $4`,
-        [name.trim(), passwordHash, email?.trim() || null, userId]
+         SET name = $1, password_hash = $2, email = $3, avatar = COALESCE($4, avatar), created_at = CURRENT_TIMESTAMP 
+         WHERE id = $5`,
+        [name.trim(), passwordHash, email?.trim() || null, avatar?.trim() || null, userId]
       );
     } else {
       // 3. Create new unverified user
       userId = `usr_${uuidv4().substring(0, 8)}`;
       const walletId = `wlt_${userId.replace('usr_', '')}`;
       const passwordHash = await bcrypt.hash(password, 10);
-      const defaultAvatar = `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80`;
 
       await pool.query(
         `INSERT INTO users (id, name, phone, email, avatar, password_hash, phone_verified, created_at)
          VALUES ($1, $2, $3, $4, $5, $6, FALSE, CURRENT_TIMESTAMP)`,
-        [userId, name.trim(), normalizedPhone, email?.trim() || null, defaultAvatar, passwordHash]
+        [userId, name.trim(), normalizedPhone, email?.trim() || null, chosenAvatar, passwordHash]
       );
 
       // Create initial wallet (0 balance)
@@ -399,5 +400,53 @@ export class AuthService {
       balance: Number(row.balance || 0),
       balance_bdt: Number(row.balance || 0) / 100,
     };
+  }
+
+  /**
+   * Updates user profile (name, email, avatar)
+   */
+  public static async updateProfile(
+    userId: string,
+    dto: { name?: string; email?: string; avatar?: string },
+    requestId?: string
+  ): Promise<UserWithWallet> {
+    const { name, email, avatar } = dto;
+
+    if (name !== undefined && name.trim().length < 2) {
+      const error: any = new Error('Name must be at least 2 characters long.');
+      error.statusCode = 400;
+      error.errorCode = 'INVALID_NAME';
+      throw error;
+    }
+
+    await pool.query(
+      `UPDATE users 
+       SET name = COALESCE($1, name),
+           email = COALESCE($2, email),
+           avatar = COALESCE($3, avatar)
+       WHERE id = $4`,
+      [
+        name !== undefined ? name.trim() : null,
+        email !== undefined ? email.trim() || null : null,
+        avatar !== undefined ? avatar.trim() : null,
+        userId,
+      ]
+    );
+
+    Logger.info('AUTH', 'PROFILE_UPDATED', 'User updated profile', {
+      requestId,
+      userId,
+      hasAvatar: !!avatar,
+    });
+
+    const updatedProfile = await this.getMe(userId);
+    if (!updatedProfile) {
+      const error: any = new Error('User not found.');
+      error.statusCode = 404;
+      error.errorCode = 'USER_NOT_FOUND';
+      throw error;
+    }
+
+    return updatedProfile;
   }
 }

@@ -15,8 +15,21 @@ import {
   RotateCcw,
   Sparkles,
   ShieldCheck,
+  Camera,
+  Image,
   X
 } from 'lucide-react';
+
+export const PRESET_AVATARS = [
+  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=150&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150&auto=format&fit=crop&q=80',
+];
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -39,6 +52,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [email, setEmail] = useState('');
+  const [avatar, setAvatar] = useState(PRESET_AVATARS[0]);
+  const [customAvatarUrl, setCustomAvatarUrl] = useState('');
+  const [showCustomAvatarInput, setShowCustomAvatarInput] = useState(false);
   const [otp, setOtp] = useState('');
   const [devOtp, setDevOtp] = useState<string | null>(null);
 
@@ -75,6 +91,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         phone,
         password,
         email: email.trim() || undefined,
+        avatar: (customAvatarUrl.trim() || avatar).trim(),
       });
 
       setSuccessMsg(res.message);
@@ -343,6 +360,66 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {/* 2. REGISTER FORM */}
         {mode === 'register' && (
           <form onSubmit={handleRegister} className="space-y-3">
+            {/* Avatar Selector */}
+            <div className="bg-slate-950/80 p-2.5 rounded-xl border border-slate-800/80">
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[11px] font-medium text-slate-300 flex items-center gap-1.5">
+                  <Camera className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Choose Profile Picture</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowCustomAvatarInput(!showCustomAvatarInput)}
+                  className="text-[10px] text-emerald-400 hover:text-emerald-300 transition-colors"
+                >
+                  {showCustomAvatarInput ? 'Pick Presets' : 'Custom Image URL'}
+                </button>
+              </div>
+
+              {showCustomAvatarInput ? (
+                <div className="flex items-center gap-2 mt-1">
+                  <img
+                    src={customAvatarUrl || avatar}
+                    alt="Preview"
+                    className="w-9 h-9 rounded-xl object-cover ring-2 ring-emerald-500/50 shrink-0"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = PRESET_AVATARS[0];
+                    }}
+                  />
+                  <input
+                    type="url"
+                    placeholder="Paste image URL (https://...)"
+                    value={customAvatarUrl}
+                    onChange={(e) => setCustomAvatarUrl(e.target.value)}
+                    className="flex-1 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-white text-[11px] placeholder-slate-600 focus:border-emerald-500/70 outline-none"
+                  />
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 overflow-x-auto py-1 scrollbar-none">
+                  {PRESET_AVATARS.map((avUrl, index) => {
+                    const isSelected = avatar === avUrl && !customAvatarUrl;
+                    return (
+                      <button
+                        key={index}
+                        type="button"
+                        onClick={() => {
+                          setAvatar(avUrl);
+                          setCustomAvatarUrl('');
+                        }}
+                        className={`relative rounded-xl overflow-hidden shrink-0 transition-all ${
+                          isSelected
+                            ? 'ring-2 ring-emerald-400 scale-105 shadow-md shadow-emerald-950'
+                            : 'opacity-60 hover:opacity-100 hover:scale-100'
+                        }`}
+                      >
+                        <img src={avUrl} alt={`Avatar ${index + 1}`} className="w-8 h-8 object-cover" />
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
             <div>
               <label className="block text-[11px] font-medium text-slate-400 mb-1">
                 Full Name

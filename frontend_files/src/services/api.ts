@@ -82,6 +82,7 @@ export class ApiService {
     phone: string;
     password: string;
     email?: string;
+    avatar?: string;
   }): Promise<{ success: boolean; message: string; phone: string; phone_verified: boolean; user?: any; dev_otp?: string }> {
     this.clearCache();
     const res = await fetch(`${API_BASE}/auth/register`, {
@@ -147,6 +148,22 @@ export class ApiService {
       }
     }
     return json;
+  }
+
+  public static async updateProfile(payload: {
+    name?: string;
+    email?: string;
+    avatar?: string;
+  }): Promise<UserWithWallet> {
+    this.clearCache();
+    const res = await fetch(`${API_BASE}/auth/profile`, {
+      method: 'PUT',
+      headers: this.getHeaders(),
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || 'Failed to update profile');
+    return json.data;
   }
 
   public static async logout(): Promise<void> {

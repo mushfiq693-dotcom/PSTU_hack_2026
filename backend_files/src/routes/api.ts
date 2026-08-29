@@ -22,6 +22,7 @@ apiRouter.post('/auth/resend-otp', AuthController.resendOtp);
 apiRouter.post('/auth/login', AuthController.login);
 apiRouter.post('/auth/logout', AuthController.logout);
 apiRouter.get('/auth/me', authMiddleware, AuthController.me);
+apiRouter.put('/auth/profile', authMiddleware, AuthController.updateProfile);
 
 // ==========================================
 // User & Wallet Endpoints

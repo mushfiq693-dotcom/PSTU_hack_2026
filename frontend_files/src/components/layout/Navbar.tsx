@@ -5,6 +5,7 @@ import { TabType } from '../../types';
 import { FastPayLogo } from '../common/FastPayLogo';
 import { NotificationBell } from '../notifications/NotificationBell';
 import { SideMenuDrawer } from './SideMenuDrawer';
+import { ProfileModal } from '../auth/ProfileModal';
 import {
   ArrowRightLeft,
   UserCheck,
@@ -17,7 +18,9 @@ import {
   Menu,
   Sparkles,
   UserPlus,
-  LogIn
+  LogIn,
+  User,
+  Settings
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -43,6 +46,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown on click outside
@@ -183,7 +187,26 @@ export const Navbar: React.FC<NavbarProps> = ({
                         transition={{ duration: 0.15, ease: 'easeOut' }}
                         className="absolute right-0 mt-2 w-72 rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl p-2 z-50 overflow-hidden"
                       >
-                        <div className="px-3 py-2 border-b border-slate-800 mb-1">
+                        {/* 1. Personalized Profile Modal Trigger */}
+                        <div className="p-1 mb-1.5">
+                          <button
+                            onClick={() => {
+                              setDropdownOpen(false);
+                              setProfileModalOpen(true);
+                            }}
+                            className="w-full flex items-center justify-between p-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 font-bold text-xs transition-all shadow-sm group"
+                          >
+                            <div className="flex items-center gap-2">
+                              <User className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
+                              <span>My Profile & Settings</span>
+                            </div>
+                            <span className="text-[10px] uppercase font-bold bg-emerald-500/20 px-1.5 py-0.5 rounded text-emerald-300">
+                              Open
+                            </span>
+                          </button>
+                        </div>
+
+                        <div className="px-3 py-1.5 border-t border-b border-slate-800 my-1">
                           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                             Switch Demo Persona
                           </p>
@@ -294,12 +317,22 @@ export const Navbar: React.FC<NavbarProps> = ({
 
       {/* Side Menu Drawer for System & Audit */}
       {isAuthenticated && (
-        <SideMenuDrawer
-          isOpen={drawerOpen}
-          onClose={() => setDrawerOpen(false)}
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-        />
+        <>
+          <SideMenuDrawer
+            isOpen={drawerOpen}
+            onClose={() => setDrawerOpen(false)}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+          />
+
+          <ProfileModal
+            isOpen={profileModalOpen}
+            onClose={() => setProfileModalOpen(false)}
+            onLogout={() => {
+              setActiveTab('landing');
+            }}
+          />
+        </>
       )}
     </>
   );

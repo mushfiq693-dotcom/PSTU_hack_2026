@@ -167,6 +167,13 @@ export interface RegisterDto {
   phone: string;
   password: string;
   email?: string;
+  avatar?: string;
+}
+
+export interface UpdateProfileDto {
+  name?: string;
+  email?: string;
+  avatar?: string;
 }
 
 export interface VerifyOtpDto {
