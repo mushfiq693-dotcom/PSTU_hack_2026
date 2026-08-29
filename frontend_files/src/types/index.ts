@@ -1,4 +1,4 @@
-export type TabType = 'dashboard' | 'send' | 'requests' | 'ledger' | 'stress';
+export type TabType = 'landing' | 'dashboard' | 'send' | 'requests' | 'ledger' | 'stress';
 
 export interface User {
   id: string;

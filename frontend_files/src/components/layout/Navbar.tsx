@@ -11,7 +11,8 @@ import {
   Cpu,
   ChevronDown,
   Check,
-  RotateCcw
+  RotateCcw,
+  Sparkles
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -36,6 +37,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
   }, []);
 
   const navItems = [
+    { id: 'landing' as TabType, label: 'Home', icon: Sparkles },
     { id: 'dashboard' as TabType, label: 'Overview', icon: Layers },
     { id: 'send' as TabType, label: 'Send Money', icon: ArrowRightLeft },
     { id: 'requests' as TabType, label: 'Requests', icon: UserCheck },
@@ -49,7 +51,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
         
         {/* Brand Logo */}
         <div 
-          onClick={() => setActiveTab('dashboard')} 
+          onClick={() => setActiveTab('landing')} 
           className="cursor-pointer flex items-center"
         >
           <FastPayLogo size="md" />
@@ -64,7 +66,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`relative px-4 py-2 rounded-xl text-xs font-semibold transition-colors flex items-center gap-2 z-10 ${
+                className={`relative px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 z-10 ${
                   isActive ? 'text-white font-bold' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
@@ -75,7 +77,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
                     transition={{ type: 'spring', stiffness: 380, damping: 30 }}
                   />
                 )}
-                <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-slate-400'}`} />
                 <span>{item.label}</span>
               </button>
             );
@@ -165,7 +167,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
                     })}
                   </div>
 
-                  {/* Clean bottom option to reset balances if needed */}
+                  {/* Clean bottom option to reset balances */}
                   <div className="mt-2 pt-2 border-t border-slate-800">
                     <button
                       onClick={() => {
@@ -200,7 +202,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
                 isActive ? 'text-emerald-400 font-bold' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              <Icon className="w-5 h-5" />
+              <Icon className="w-4 h-4" />
               <span>{item.label}</span>
             </button>
           );

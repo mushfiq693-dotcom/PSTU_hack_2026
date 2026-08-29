@@ -3,16 +3,17 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AuthProvider } from './context/AuthContext';
 import { TabType } from './types';
 import { Navbar } from './components/layout/Navbar';
+import { LandingPage } from './components/landing/LandingPage';
 import { Dashboard } from './pages/Dashboard';
 import { SendMoneyView } from './components/transfer/SendMoneyView';
 import { MoneyRequestsView } from './components/requests/MoneyRequestsView';
 import { LedgerAuditView } from './components/ledger/LedgerAuditView';
 import { ConcurrencyStudio } from './components/stress/ConcurrencyStudio';
 import { FastPayLogo } from './components/common/FastPayLogo';
-import { ShieldCheck, Zap } from 'lucide-react';
+import { ShieldCheck } from 'lucide-react';
 
 const AppContent: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+  const [activeTab, setActiveTab] = useState<TabType>('landing');
 
   return (
     <div className="min-h-screen flex flex-col bg-[#090d16] text-slate-100 font-sans">
@@ -30,6 +31,7 @@ const AppContent: React.FC = () => {
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.18, ease: 'easeOut' }}
           >
+            {activeTab === 'landing' && <LandingPage setActiveTab={setActiveTab} />}
             {activeTab === 'dashboard' && <Dashboard setActiveTab={setActiveTab} />}
             {activeTab === 'send' && <SendMoneyView />}
             {activeTab === 'requests' && <MoneyRequestsView />}
