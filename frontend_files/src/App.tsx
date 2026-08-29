@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { TabType } from './types';
@@ -12,12 +12,18 @@ import { ConnectionsView } from './components/connections/ConnectionsView';
 import { LedgerAuditView } from './components/ledger/LedgerAuditView';
 import { ConcurrencyStudio } from './components/stress/ConcurrencyStudio';
 import { FastPayLogo } from './components/common/FastPayLogo';
+import { UiRedisCache } from './services/uiRedisCache';
 import { ShieldCheck } from 'lucide-react';
 
 const AppContent: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [authModalDirect, setAuthModalDirect] = useState<'login' | 'register' | null>(null);
+
+  // Pre-warm animations and assets via Frontend UI Redis Cache
+  useEffect(() => {
+    UiRedisCache.prewarmDemoAvatars();
+  }, []);
 
   const handleAuthSuccess = () => {
     setActiveTab('dashboard');

@@ -86,6 +86,8 @@ CREATE TABLE IF NOT EXISTS money_requests (
     resolved_at TIMESTAMPTZ
 );
 
+ALTER TABLE money_requests ADD COLUMN IF NOT EXISTS due_date TIMESTAMPTZ;
+
 -- 7. Connections Table (Friends & Family)
 CREATE TABLE IF NOT EXISTS connections (
     id VARCHAR(64) PRIMARY KEY,
