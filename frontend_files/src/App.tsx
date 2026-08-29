@@ -17,22 +17,39 @@ import { ShieldCheck } from 'lucide-react';
 const AppContent: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+  const [authModalDirect, setAuthModalDirect] = useState<'login' | 'register' | null>(null);
 
   const handleAuthSuccess = () => {
     setActiveTab('dashboard');
+    setAuthModalDirect(null);
+  };
+
+  const handleOpenAuth = (mode: 'login' | 'register') => {
+    setAuthModalDirect(mode);
   };
 
   return (
     <div className="min-h-screen flex flex-col bg-[#090d16] text-slate-100 font-sans">
       
-      {/* Top Navbar with Persona Switcher & Notifications */}
-      <Navbar activeTab={activeTab} setActiveTab={setActiveTab} />
+      {/* Top Navbar */}
+      <Navbar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        openAuthModal={handleOpenAuth}
+      />
 
       {/* Main Animated Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-7">
-        {!isAuthenticated && activeTab === 'landing' ? (
-          <LandingPage onAuthSuccess={handleAuthSuccess} setActiveTab={setActiveTab} />
+        {!isAuthenticated ? (
+          /* Unauthenticated state: ONLY Landing Page */
+          <LandingPage
+            onAuthSuccess={handleAuthSuccess}
+            openAuthModalDirectly={authModalDirect}
+            onCloseDirectModal={() => setAuthModalDirect(null)}
+            setActiveTab={setActiveTab}
+          />
         ) : (
+          /* Authenticated state: App Views */
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
@@ -41,7 +58,14 @@ const AppContent: React.FC = () => {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.18, ease: 'easeOut' }}
             >
-              {activeTab === 'landing' && <LandingPage onAuthSuccess={handleAuthSuccess} setActiveTab={setActiveTab} />}
+              {activeTab === 'landing' && (
+                <LandingPage
+                  onAuthSuccess={handleAuthSuccess}
+                  openAuthModalDirectly={authModalDirect}
+                  onCloseDirectModal={() => setAuthModalDirect(null)}
+                  setActiveTab={setActiveTab}
+                />
+              )}
               {activeTab === 'dashboard' && <Dashboard setActiveTab={setActiveTab} />}
               {activeTab === 'send' && <SendMoneyView />}
               {activeTab === 'requests' && <MoneyRequestsView />}
