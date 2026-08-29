@@ -6,10 +6,26 @@ const db_1 = require("../config/db");
 const transferService_1 = require("./transferService");
 class RequestService {
     /**
-     * Create a new P2P Money Request in PostgreSQL
+     * Helper to compute dynamic lifecycle status for loan / borrow time limits
+     */
+    static computeStatus(rawStatus, dueDate) {
+        if (rawStatus === 'PENDING' && dueDate) {
+            const dueTime = new Date(dueDate).getTime();
+            const now = Date.now();
+            if (dueTime < now) {
+                return 'OVERDUE';
+            }
+            if (dueTime - now <= 24 * 60 * 60 * 1000) {
+                return 'DUE_SOON';
+            }
+        }
+        return rawStatus;
+    }
+    /**
+     * Create a new P2P Money Request in PostgreSQL with optional Due Date and Notification
      */
     static async createRequest(params) {
-        const { requesterId, payerId: initialPayerId, payerPhone, amountPoisha, note } = params;
+        const { requesterId, payerId: initialPayerId, payerPhone, amountPoisha, note, dueDate } = params;
         if (!amountPoisha || amountPoisha <= 0 || !Number.isInteger(amountPoisha)) {
             const error = new Error('Request amount must be a positive integer in Poisha.');
             error.statusCode = 400;
@@ -40,13 +56,28 @@ class RequestService {
             throw error;
         }
         const requestId = (0, uuid_1.v4)();
-        await db_1.pool.query(`INSERT INTO money_requests (id, requester_id, payer_id, amount, note, status, created_at)
-       VALUES ($1, $2, $3, $4, $5, 'PENDING', CURRENT_TIMESTAMP)`, [requestId, requesterId, resolvedPayerId, amountPoisha, note || null]);
+        const formattedDueDate = dueDate ? new Date(dueDate).toISOString() : null;
+        await db_1.pool.query(`INSERT INTO money_requests (id, requester_id, payer_id, amount, note, due_date, status, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 'PENDING', CURRENT_TIMESTAMP)`, [requestId, requesterId, resolvedPayerId, amountPoisha, note || null, formattedDueDate]);
+        // Fetch requester name for notification
+        const requesterRes = await db_1.pool.query('SELECT name FROM users WHERE id = $1', [requesterId]);
+        const requesterName = requesterRes.rows[0]?.name || 'A friend';
+        const amountBdt = (amountPoisha / 100).toLocaleString();
+        // Insert In-App Notification (MONEY_NEED) for the payer
+        const notifId = (0, uuid_1.v4)();
+        await db_1.pool.query(`INSERT INTO notifications (id, user_id, type, reference_id, title, message, is_read, created_at)
+       VALUES ($1, $2, 'MONEY_NEED', $3, $4, $5, FALSE, CURRENT_TIMESTAMP)`, [
+            notifId,
+            resolvedPayerId,
+            requestId,
+            `Money Request from ${requesterName}`,
+            `${requesterName} requested ৳${amountBdt}${note ? ` for "${note}"` : ''}.${formattedDueDate ? ` Settle by ${new Date(formattedDueDate).toLocaleDateString()}.` : ''}`
+        ]);
         const request = await this.getRequestById(requestId);
         return request;
     }
     /**
-     * Retrieve a single Money Request with user details
+     * Retrieve a single Money Request with computed status and user details
      */
     static async getRequestById(requestId) {
         const res = await db_1.pool.query(`SELECT 
@@ -61,10 +92,14 @@ class RequestService {
       JOIN users ru ON mr.requester_id = ru.id
       JOIN users pu ON mr.payer_id = pu.id
       WHERE mr.id = $1`, [requestId]);
-        return res.rows[0] || null;
+        if (res.rows.length === 0)
+            return null;
+        const req = res.rows[0];
+        req.computed_status = this.computeStatus(req.status, req.due_date);
+        return req;
     }
     /**
-     * List money requests for a user (incoming, outgoing, or all)
+     * List money requests for a user with computed overdue status
      */
     static async getRequests(userId, filter = 'all') {
         let queryText = `
@@ -95,7 +130,10 @@ class RequestService {
         }
         queryText += ' ORDER BY mr.created_at DESC';
         const res = await db_1.pool.query(queryText, params);
-        return res.rows;
+        return res.rows.map((row) => ({
+            ...row,
+            computed_status: this.computeStatus(row.status, row.due_date)
+        }));
     }
     /**
      * Accept and Settle a Money Request in PostgreSQL

@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 import { ApiService } from '../../services/api';
+import { Connection } from '../../types';
 import {
   ArrowRightLeft,
   CheckCircle2,
@@ -12,17 +13,20 @@ import {
   Sparkles,
   Key,
   ShieldCheck,
-  RotateCcw
+  RotateCcw,
+  Users2,
+  Heart
 } from 'lucide-react';
 
 export const SendMoneyView: React.FC = () => {
-  const { currentUser, allUsers, refreshUserData } = useAuth();
+  const { currentUser, allUsers, refreshWallet } = useAuth();
 
   const [receiverId, setReceiverId] = useState<string>('');
   const [receiverPhone, setReceiverPhone] = useState<string>('');
   const [amountBdt, setAmountBdt] = useState<string>('');
   const [note, setNote] = useState<string>('');
   const [category, setCategory] = useState<string>('General');
+  const [connections, setConnections] = useState<Connection[]>([]);
   const [idempotencyKey, setIdempotencyKey] = useState<string>(
     `IDEM-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`
   );
@@ -34,6 +38,18 @@ export const SendMoneyView: React.FC = () => {
 
   const presetAmounts = [500, 1000, 2500, 5000, 10000];
   const categories = ['General', 'Food', 'Events', 'Utility', 'Rent', 'Travel'];
+
+  useEffect(() => {
+    const loadConnections = async () => {
+      try {
+        const conns = await ApiService.getConnections();
+        setConnections(conns.filter((c) => c.status === 'ACCEPTED'));
+      } catch (err) {
+        console.error('Failed to load connections:', err);
+      }
+    };
+    loadConnections();
+  }, [currentUser]);
 
   const recipientOptions = allUsers.filter((u) => u.id !== currentUser?.id);
 
@@ -90,7 +106,7 @@ export const SendMoneyView: React.FC = () => {
         timestamp: new Date().toLocaleTimeString(),
       });
 
-      await refreshUserData();
+      await refreshWallet();
     } catch (err: any) {
       setErrorMsg(err.message || 'Transfer failed.');
     } finally {
@@ -136,7 +152,7 @@ export const SendMoneyView: React.FC = () => {
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.2 }}
-            className="glass-card rounded-3xl p-6 sm:p-8 border border-emerald-500/40 shadow-2xl relative overflow-hidden space-y-6"
+            className="bg-slate-900 rounded-3xl p-6 sm:p-8 border border-emerald-500/40 shadow-2xl relative overflow-hidden space-y-6"
           >
             <div className="text-center">
               <div className="w-16 h-16 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center mx-auto mb-3 shadow-lg shadow-emerald-950/50">
@@ -212,7 +228,7 @@ export const SendMoneyView: React.FC = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             onSubmit={handleSubmit}
-            className="glass-card rounded-3xl p-6 sm:p-8 border border-slate-800 shadow-xl space-y-5"
+            className="bg-slate-900 rounded-3xl p-6 sm:p-8 border border-slate-800 shadow-xl space-y-5"
           >
             {/* Error Alert */}
             {errorMsg && (
@@ -222,10 +238,62 @@ export const SendMoneyView: React.FC = () => {
               </div>
             )}
 
-            {/* 1. Recipient Selector */}
+            {/* 1. Connections First Recipient Tray */}
+            {connections.length > 0 && (
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
+                  <Users2 className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Friends & Family Quick Tray</span>
+                </label>
+                <div className="flex items-center gap-2.5 overflow-x-auto pb-2">
+                  {connections.map((c) => {
+                    const targetId = c.user_id === currentUser?.id ? c.connected_user_id : c.user_id;
+                    const isSelected = receiverId === targetId;
+                    const isFamily = c.relation_type === 'FAMILY';
+
+                    return (
+                      <button
+                        type="button"
+                        key={c.id}
+                        onClick={() => {
+                          setReceiverId(targetId);
+                          setReceiverPhone(c.connected_phone || '');
+                          setErrorMsg(null);
+                        }}
+                        className={`flex flex-col items-center gap-1.5 p-2 rounded-2xl border transition-all shrink-0 min-w-[76px] ${
+                          isSelected
+                            ? 'bg-emerald-500/20 border-emerald-500 text-white ring-1 ring-emerald-500'
+                            : 'bg-slate-950 border-slate-800 hover:border-slate-700 text-slate-300'
+                        }`}
+                      >
+                        <div className="relative">
+                          <img
+                            src={c.connected_avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'}
+                            alt={c.connected_name}
+                            className="w-10 h-10 rounded-xl object-cover ring-1 ring-slate-700"
+                          />
+                          <span
+                            className={`absolute -bottom-1 -right-1 text-[8px] font-bold px-1 rounded-full ${
+                              isFamily ? 'bg-rose-500 text-white' : 'bg-teal-600 text-white'
+                            }`}
+                          >
+                            {isFamily ? 'Fam' : 'Frnd'}
+                          </span>
+                        </div>
+                        <span className="text-[11px] font-semibold truncate max-w-[70px]">
+                          {c.connected_name?.split(' ')[0]}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* 2. All Recipients Selector */}
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
-                Choose Recipient
+                All Available Recipients
               </label>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {recipientOptions.map((user) => {
@@ -256,7 +324,7 @@ export const SendMoneyView: React.FC = () => {
               </div>
             </div>
 
-            {/* 2. Amount Input & Quick Presets */}
+            {/* 3. Amount Input & Quick Presets */}
             <div>
               <div className="flex justify-between items-center mb-1.5">
                 <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -302,7 +370,7 @@ export const SendMoneyView: React.FC = () => {
               </div>
             </div>
 
-            {/* 3. Category & Note */}
+            {/* 4. Category & Note */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
@@ -335,7 +403,7 @@ export const SendMoneyView: React.FC = () => {
               </div>
             </div>
 
-            {/* 4. Idempotency Key Ribbon */}
+            {/* 5. Idempotency Key Ribbon */}
             <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 flex items-center justify-between text-xs font-mono">
               <div className="flex items-center gap-2 text-slate-400 truncate">
                 <Key className="w-3.5 h-3.5 text-amber-400 shrink-0" />

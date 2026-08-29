@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
-import { pool, getClient } from '../config/db';
-import { MoneyRequest } from '../types';
+import { pool } from '../config/db';
+import { MoneyRequest, RequestStatus } from '../types';
 import { TransferService, TransferResult } from './transferService';
 
 export interface CreateRequestParams {
@@ -9,14 +9,32 @@ export interface CreateRequestParams {
   payerPhone?: string;
   amountPoisha: number;
   note?: string;
+  dueDate?: string;
 }
 
 export class RequestService {
   /**
-   * Create a new P2P Money Request in PostgreSQL
+   * Helper to compute dynamic lifecycle status for loan / borrow time limits
+   */
+  public static computeStatus(rawStatus: string, dueDate: string | null): RequestStatus {
+    if (rawStatus === 'PENDING' && dueDate) {
+      const dueTime = new Date(dueDate).getTime();
+      const now = Date.now();
+      if (dueTime < now) {
+        return 'OVERDUE';
+      }
+      if (dueTime - now <= 24 * 60 * 60 * 1000) {
+        return 'DUE_SOON';
+      }
+    }
+    return rawStatus as RequestStatus;
+  }
+
+  /**
+   * Create a new P2P Money Request in PostgreSQL with optional Due Date and Notification
    */
   public static async createRequest(params: CreateRequestParams): Promise<MoneyRequest> {
-    const { requesterId, payerId: initialPayerId, payerPhone, amountPoisha, note } = params;
+    const { requesterId, payerId: initialPayerId, payerPhone, amountPoisha, note, dueDate } = params;
 
     if (!amountPoisha || amountPoisha <= 0 || !Number.isInteger(amountPoisha)) {
       const error: any = new Error('Request amount must be a positive integer in Poisha.');
@@ -52,10 +70,31 @@ export class RequestService {
     }
 
     const requestId = uuidv4();
+    const formattedDueDate = dueDate ? new Date(dueDate).toISOString() : null;
+
     await pool.query(
-      `INSERT INTO money_requests (id, requester_id, payer_id, amount, note, status, created_at)
-       VALUES ($1, $2, $3, $4, $5, 'PENDING', CURRENT_TIMESTAMP)`,
-      [requestId, requesterId, resolvedPayerId, amountPoisha, note || null]
+      `INSERT INTO money_requests (id, requester_id, payer_id, amount, note, due_date, status, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 'PENDING', CURRENT_TIMESTAMP)`,
+      [requestId, requesterId, resolvedPayerId, amountPoisha, note || null, formattedDueDate]
+    );
+
+    // Fetch requester name for notification
+    const requesterRes = await pool.query('SELECT name FROM users WHERE id = $1', [requesterId]);
+    const requesterName = requesterRes.rows[0]?.name || 'A friend';
+    const amountBdt = (amountPoisha / 100).toLocaleString();
+
+    // Insert In-App Notification (MONEY_NEED) for the payer
+    const notifId = uuidv4();
+    await pool.query(
+      `INSERT INTO notifications (id, user_id, type, reference_id, title, message, is_read, created_at)
+       VALUES ($1, $2, 'MONEY_NEED', $3, $4, $5, FALSE, CURRENT_TIMESTAMP)`,
+      [
+        notifId,
+        resolvedPayerId,
+        requestId,
+        `Money Request from ${requesterName}`,
+        `${requesterName} requested ৳${amountBdt}${note ? ` for "${note}"` : ''}.${formattedDueDate ? ` Settle by ${new Date(formattedDueDate).toLocaleDateString()}.` : ''}`
+      ]
     );
 
     const request = await this.getRequestById(requestId);
@@ -63,7 +102,7 @@ export class RequestService {
   }
 
   /**
-   * Retrieve a single Money Request with user details
+   * Retrieve a single Money Request with computed status and user details
    */
   public static async getRequestById(requestId: string): Promise<MoneyRequest | null> {
     const res = await pool.query(
@@ -82,11 +121,14 @@ export class RequestService {
       [requestId]
     );
 
-    return (res.rows[0] as MoneyRequest) || null;
+    if (res.rows.length === 0) return null;
+    const req = res.rows[0];
+    req.computed_status = this.computeStatus(req.status, req.due_date);
+    return req as MoneyRequest;
   }
 
   /**
-   * List money requests for a user (incoming, outgoing, or all)
+   * List money requests for a user with computed overdue status
    */
   public static async getRequests(
     userId: string,
@@ -121,7 +163,10 @@ export class RequestService {
     queryText += ' ORDER BY mr.created_at DESC';
 
     const res = await pool.query(queryText, params);
-    return res.rows as MoneyRequest[];
+    return res.rows.map((row) => ({
+      ...row,
+      computed_status: this.computeStatus(row.status, row.due_date)
+    })) as MoneyRequest[];
   }
 
   /**

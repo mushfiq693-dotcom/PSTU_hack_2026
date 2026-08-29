@@ -9,6 +9,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   switchUser: (userId: string) => Promise<void>;
   refreshUserData: () => Promise<void>;
+  refreshWallet: () => Promise<void>;
   resetDemoData: () => Promise<void>;
   logout: () => void;
   setAuthenticatedUser: (user: UserWithWallet) => void;
@@ -97,6 +98,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAuthenticated,
         switchUser,
         refreshUserData,
+        refreshWallet: refreshUserData,
         resetDemoData,
         logout,
         setAuthenticatedUser,

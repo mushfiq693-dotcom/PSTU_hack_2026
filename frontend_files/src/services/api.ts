@@ -4,7 +4,12 @@ import {
   MoneyRequest,
   LedgerEntry,
   LedgerAuditResult,
-  StressTestResult
+  StressTestResult,
+  Connection,
+  InAppNotification,
+  BillSplit,
+  BillCategory,
+  RelationType
 } from '../types';
 
 const API_BASE = '/api';
@@ -174,11 +179,15 @@ export class ApiService {
     return { ...json, replayed: isReplayed };
   }
 
+  // ==========================================
+  // Money Requests & Loans with Borrow Time Limit
+  // ==========================================
   public static async createMoneyRequest(payload: {
     payer_id?: string;
     payer_phone?: string;
     amount_bdt: number;
     note?: string;
+    due_date?: string;
   }): Promise<MoneyRequest> {
     const res = await fetch(`${API_BASE}/requests`, {
       method: 'POST',
@@ -230,6 +239,120 @@ export class ApiService {
     return json.data;
   }
 
+  // ==========================================
+  // Connections (Friends & Family)
+  // ==========================================
+  public static async getConnections(relationType?: RelationType): Promise<Connection[]> {
+    let url = `${API_BASE}/connections`;
+    if (relationType) url += `?relation_type=${relationType}`;
+    const res = await fetch(url, { headers: this.getHeaders() });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || 'Failed to fetch connections');
+    return json.data;
+  }
+
+  public static async sendConnectionRequest(
+    connectedUserId: string,
+    relationType: RelationType
+  ): Promise<Connection> {
+    const res = await fetch(`${API_BASE}/connections`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ connected_user_id: connectedUserId, relation_type: relationType }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || 'Failed to send connection request');
+    return json.data;
+  }
+
+  public static async acceptConnection(connectionId: string): Promise<Connection> {
+    const res = await fetch(`${API_BASE}/connections/${connectionId}/accept`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || 'Failed to accept connection');
+    return json.data;
+  }
+
+  public static async declineConnection(connectionId: string): Promise<Connection> {
+    const res = await fetch(`${API_BASE}/connections/${connectionId}/decline`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || 'Failed to decline connection');
+    return json.data;
+  }
+
+  // ==========================================
+  // In-App Notifications
+  // ==========================================
+  public static async getNotifications(): Promise<InAppNotification[]> {
+    const res = await fetch(`${API_BASE}/notifications`, {
+      headers: this.getHeaders(),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || 'Failed to fetch notifications');
+    return json.data;
+  }
+
+  public static async markNotificationRead(id: string): Promise<void> {
+    await fetch(`${API_BASE}/notifications/${id}/read`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+    });
+  }
+
+  public static async markAllNotificationsRead(): Promise<void> {
+    await fetch(`${API_BASE}/notifications/read-all`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+    });
+  }
+
+  // ==========================================
+  // Bill Splits (Category-Aware Shared Expenses)
+  // ==========================================
+  public static async getSplits(category?: BillCategory): Promise<BillSplit[]> {
+    let url = `${API_BASE}/splits`;
+    if (category) url += `?category=${category}`;
+    const res = await fetch(url, { headers: this.getHeaders() });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || 'Failed to fetch bill splits');
+    return json.data;
+  }
+
+  public static async createSplit(payload: {
+    title: string;
+    total_amount_bdt: number;
+    category: BillCategory;
+    participants: Array<{ user_id?: string; phone?: string; share_amount_bdt: number }>;
+  }): Promise<BillSplit> {
+    const res = await fetch(`${API_BASE}/splits`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || 'Failed to create bill split');
+    return json.data;
+  }
+
+  public static async paySplitShare(splitId: string): Promise<any> {
+    const idemKey = `SPLIT-PAY-${splitId}-${Date.now()}`;
+    const res = await fetch(`${API_BASE}/splits/${splitId}/pay`, {
+      method: 'POST',
+      headers: this.getHeaders(idemKey),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || 'Failed to pay split share');
+    return json.data;
+  }
+
+  // ==========================================
+  // Ledger & Dev Diagnostics
+  // ==========================================
   public static async getLedgerEntries(
     walletId?: string,
     limit = 50,

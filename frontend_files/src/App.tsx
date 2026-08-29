@@ -7,6 +7,8 @@ import { LandingPage } from './components/landing/LandingPage';
 import { Dashboard } from './pages/Dashboard';
 import { SendMoneyView } from './components/transfer/SendMoneyView';
 import { MoneyRequestsView } from './components/requests/MoneyRequestsView';
+import { BillSplitView } from './components/splits/BillSplitView';
+import { ConnectionsView } from './components/connections/ConnectionsView';
 import { LedgerAuditView } from './components/ledger/LedgerAuditView';
 import { ConcurrencyStudio } from './components/stress/ConcurrencyStudio';
 import { FastPayLogo } from './components/common/FastPayLogo';
@@ -23,19 +25,14 @@ const AppContent: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col bg-[#090d16] text-slate-100 font-sans">
       
-      {/* Top Navbar */}
-      <Navbar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-      />
+      {/* Top Navbar with Persona Switcher & Notifications */}
+      <Navbar activeTab={activeTab} setActiveTab={setActiveTab} />
 
       {/* Main Animated Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-7">
-        {!isAuthenticated ? (
-          /* Unauthenticated state: ONLY Landing Page with Create Account & Log In */
-          <LandingPage onAuthSuccess={handleAuthSuccess} />
+        {!isAuthenticated && activeTab === 'landing' ? (
+          <LandingPage onAuthSuccess={handleAuthSuccess} setActiveTab={setActiveTab} />
         ) : (
-          /* Authenticated state: Full Application Views */
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
@@ -44,9 +41,12 @@ const AppContent: React.FC = () => {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.18, ease: 'easeOut' }}
             >
+              {activeTab === 'landing' && <LandingPage onAuthSuccess={handleAuthSuccess} setActiveTab={setActiveTab} />}
               {activeTab === 'dashboard' && <Dashboard setActiveTab={setActiveTab} />}
               {activeTab === 'send' && <SendMoneyView />}
               {activeTab === 'requests' && <MoneyRequestsView />}
+              {activeTab === 'splits' && <BillSplitView />}
+              {activeTab === 'connections' && <ConnectionsView setActiveTab={setActiveTab} />}
               {activeTab === 'ledger' && <LedgerAuditView />}
               {activeTab === 'stress' && <ConcurrencyStudio />}
             </motion.div>
@@ -65,7 +65,7 @@ const AppContent: React.FC = () => {
           </div>
           <div className="flex items-center gap-2 text-[11px] text-slate-400 font-mono">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span>PostgreSQL Row-Locking Concurrency Safety</span>
+            <span>PostgreSQL Row-Locking Concurrency Safety & Double-Entry Ledger</span>
           </div>
         </div>
       </footer>

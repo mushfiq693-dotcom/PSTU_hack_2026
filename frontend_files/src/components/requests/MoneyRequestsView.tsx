@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 import { ApiService } from '../../services/api';
-import { MoneyRequest } from '../../types';
+import { MoneyRequest, Connection } from '../../types';
 import {
   UserCheck,
   Plus,
@@ -13,14 +13,18 @@ import {
   Clock,
   Send,
   AlertCircle,
-  Sparkles
+  Sparkles,
+  Calendar,
+  AlertTriangle,
+  Users2
 } from 'lucide-react';
 
 export const MoneyRequestsView: React.FC = () => {
-  const { currentUser, allUsers, refreshUserData } = useAuth();
+  const { currentUser, allUsers, refreshWallet } = useAuth();
 
   const [activeSubTab, setActiveSubTab] = useState<'incoming' | 'outgoing'>('incoming');
   const [requests, setRequests] = useState<MoneyRequest[]>([]);
+  const [connections, setConnections] = useState<Connection[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -31,13 +35,18 @@ export const MoneyRequestsView: React.FC = () => {
   const [payerId, setPayerId] = useState<string>('');
   const [amountBdt, setAmountBdt] = useState<string>('');
   const [note, setNote] = useState<string>('');
+  const [dueDate, setDueDate] = useState<string>('');
   const [isCreating, setIsCreating] = useState<boolean>(false);
 
-  const fetchRequests = useCallback(async () => {
+  const fetchRequestsAndConnections = useCallback(async () => {
     setIsLoading(true);
     try {
-      const data = await ApiService.getMoneyRequests(activeSubTab);
-      setRequests(data);
+      const [requestsData, connectionsData] = await Promise.all([
+        ApiService.getMoneyRequests(activeSubTab),
+        ApiService.getConnections()
+      ]);
+      setRequests(requestsData);
+      setConnections(connectionsData);
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to fetch requests');
     } finally {
@@ -46,8 +55,8 @@ export const MoneyRequestsView: React.FC = () => {
   }, [activeSubTab]);
 
   useEffect(() => {
-    fetchRequests();
-  }, [fetchRequests]);
+    fetchRequestsAndConnections();
+  }, [fetchRequestsAndConnections]);
 
   const handleAccept = async (requestId: string) => {
     setActionLoadingId(requestId);
@@ -56,9 +65,9 @@ export const MoneyRequestsView: React.FC = () => {
 
     try {
       await ApiService.acceptMoneyRequest(requestId);
-      setSuccessMsg('Request accepted & settled via TransferService.');
-      await fetchRequests();
-      await refreshUserData();
+      setSuccessMsg('Request accepted & settled via atomic Transfer Engine.');
+      await fetchRequestsAndConnections();
+      await refreshWallet();
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to settle request');
     } finally {
@@ -73,7 +82,7 @@ export const MoneyRequestsView: React.FC = () => {
     try {
       await ApiService.rejectMoneyRequest(requestId);
       setSuccessMsg('Request declined.');
-      await fetchRequests();
+      await fetchRequestsAndConnections();
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to decline request');
     } finally {
@@ -88,7 +97,7 @@ export const MoneyRequestsView: React.FC = () => {
     try {
       await ApiService.cancelMoneyRequest(requestId);
       setSuccessMsg('Request cancelled.');
-      await fetchRequests();
+      await fetchRequestsAndConnections();
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to cancel request');
     } finally {
@@ -118,15 +127,17 @@ export const MoneyRequestsView: React.FC = () => {
         payer_id: payerId,
         amount_bdt: amountNum,
         note: note.trim() || 'FastPay Request',
+        due_date: dueDate ? new Date(dueDate).toISOString() : undefined
       });
 
       setShowCreateModal(false);
       setPayerId('');
       setAmountBdt('');
       setNote('');
-      setSuccessMsg('Money request sent successfully.');
+      setDueDate('');
+      setSuccessMsg('Money request sent with borrow time limit & notifications!');
       setActiveSubTab('outgoing');
-      await fetchRequests();
+      await fetchRequestsAndConnections();
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to create request');
     } finally {
@@ -140,22 +151,29 @@ export const MoneyRequestsView: React.FC = () => {
     <div className="max-w-4xl mx-auto space-y-6">
       
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <UserCheck className="w-6 h-6 text-teal-400" />
-            Money Requests
-          </h1>
-          <p className="text-xs text-slate-400 mt-0.5">
-            P2P invoice requests settled through central Transfer Engine
-          </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-slate-900 to-teal-950/40 p-6 rounded-3xl border border-slate-800 shadow-xl">
+        <div className="flex items-center gap-3.5">
+          <div className="w-12 h-12 rounded-2xl bg-teal-500/20 text-teal-400 border border-teal-500/30 flex items-center justify-center">
+            <UserCheck className="w-6 h-6" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-slate-100 flex items-center gap-2">
+              <span>Money Requests & Borrow Limits</span>
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-teal-500/20 text-teal-300 border border-teal-500/30">
+                P2P Invoicing
+              </span>
+            </h1>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Request funds, set repayment deadlines, and track overdue debt reminders.
+            </p>
+          </div>
         </div>
 
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           onClick={() => setShowCreateModal(true)}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow-lg shadow-emerald-950/40 transition-all"
+          className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow-md shadow-emerald-950/40 transition-all"
         >
           <Plus className="w-4 h-4" />
           <span>New Request</span>
@@ -200,7 +218,7 @@ export const MoneyRequestsView: React.FC = () => {
           }`}
         >
           <ArrowDownLeft className="w-3.5 h-3.5" />
-          <span>Incoming</span>
+          <span>Incoming to Pay</span>
         </button>
 
         <button
@@ -223,7 +241,7 @@ export const MoneyRequestsView: React.FC = () => {
           <span>Loading requests...</span>
         </div>
       ) : requests.length === 0 ? (
-        <div className="text-center py-16 glass-card rounded-3xl border border-slate-800 text-slate-400 space-y-2">
+        <div className="text-center py-16 bg-slate-900/60 rounded-3xl border border-slate-800 text-slate-400 space-y-2">
           <Clock className="w-8 h-8 text-slate-600 mx-auto" />
           <h4 className="text-sm font-bold text-slate-300">No {activeSubTab} requests found</h4>
           <p className="text-xs text-slate-500">
@@ -233,7 +251,7 @@ export const MoneyRequestsView: React.FC = () => {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {requests.map((req) => {
             const isIncoming = req.payer_id === currentUser?.id;
             const amountBdtFormatted = (req.amount / 100).toFixed(2);
@@ -241,16 +259,25 @@ export const MoneyRequestsView: React.FC = () => {
             const otherPartyPhone = isIncoming ? req.requester_phone : req.payer_phone;
             const otherPartyAvatar = isIncoming ? req.requester_avatar : req.payer_avatar;
 
-            const isPending = req.status === 'PENDING';
-            const isAccepted = req.status === 'ACCEPTED';
-            const isRejected = req.status === 'REJECTED';
+            const effectiveStatus = req.computed_status || req.status;
+            const isOverdue = effectiveStatus === 'OVERDUE';
+            const isDueSoon = effectiveStatus === 'DUE_SOON';
+            const isPending = effectiveStatus === 'PENDING';
+            const isAccepted = effectiveStatus === 'ACCEPTED';
+            const isRejected = effectiveStatus === 'REJECTED';
 
             return (
               <motion.div
                 key={req.id}
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="glass-card rounded-2xl p-5 border border-slate-800 hover:border-slate-700/80 transition-all space-y-3.5"
+                className={`bg-slate-900/80 rounded-3xl p-5 border transition-all space-y-3.5 shadow-lg ${
+                  isOverdue
+                    ? 'border-rose-500/40 bg-rose-950/10'
+                    : isDueSoon
+                    ? 'border-amber-500/40 bg-amber-950/10'
+                    : 'border-slate-800 hover:border-slate-700'
+                }`}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
@@ -268,8 +295,18 @@ export const MoneyRequestsView: React.FC = () => {
                   </div>
 
                   <div>
+                    {isOverdue && (
+                      <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center gap-1 animate-pulse">
+                        <AlertTriangle className="w-3 h-3" /> OVERDUE
+                      </span>
+                    )}
+                    {isDueSoon && (
+                      <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                        <Clock className="w-3 h-3" /> DUE SOON
+                      </span>
+                    )}
                     {isPending && (
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center gap-1">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center gap-1">
                         <Clock className="w-3 h-3" /> Pending
                       </span>
                     )}
@@ -286,16 +323,24 @@ export const MoneyRequestsView: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="bg-slate-950/70 p-3 rounded-xl border border-slate-800/80 flex items-center justify-between">
-                  <div className="text-xs text-slate-400 italic truncate max-w-[200px]">
-                    "{req.note || 'No note'}"
+                <div className="bg-slate-950/70 p-3 rounded-2xl border border-slate-800/80 flex items-center justify-between">
+                  <div className="space-y-1 min-w-0 pr-2">
+                    <div className="text-xs text-slate-300 font-medium truncate">
+                      "{req.note || 'No note'}"
+                    </div>
+                    {req.due_date && (
+                      <div className="text-[10px] flex items-center gap-1 text-slate-500 font-mono">
+                        <Calendar className="w-3 h-3 text-slate-400" />
+                        <span>Settle by: {new Date(req.due_date).toLocaleDateString()}</span>
+                      </div>
+                    )}
                   </div>
-                  <div className="text-base font-bold font-mono text-white">
+                  <div className="text-base font-bold font-mono text-white shrink-0">
                     ৳{amountBdtFormatted}
                   </div>
                 </div>
 
-                {isPending && (
+                {(isPending || isOverdue || isDueSoon) && (
                   <div className="flex gap-2 pt-1">
                     {isIncoming ? (
                       <>
@@ -303,7 +348,7 @@ export const MoneyRequestsView: React.FC = () => {
                           whileTap={{ scale: 0.98 }}
                           onClick={() => handleAccept(req.id)}
                           disabled={actionLoadingId === req.id}
-                          className="flex-1 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+                          className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
                         >
                           {actionLoadingId === req.id ? (
                             <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -317,7 +362,7 @@ export const MoneyRequestsView: React.FC = () => {
                           whileTap={{ scale: 0.98 }}
                           onClick={() => handleReject(req.id)}
                           disabled={actionLoadingId === req.id}
-                          className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition-all"
+                          className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition-all"
                         >
                           Decline
                         </motion.button>
@@ -327,7 +372,7 @@ export const MoneyRequestsView: React.FC = () => {
                         whileTap={{ scale: 0.98 }}
                         onClick={() => handleCancel(req.id)}
                         disabled={actionLoadingId === req.id}
-                        className="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 text-xs font-semibold border border-slate-700 transition-all"
+                        className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 text-xs font-semibold border border-slate-700 transition-all"
                       >
                         Cancel Request
                       </motion.button>
@@ -340,7 +385,7 @@ export const MoneyRequestsView: React.FC = () => {
         </div>
       )}
 
-      {/* Create Request Modal with Framer Motion */}
+      {/* Create Request Modal */}
       <AnimatePresence>
         {showCreateModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
@@ -348,12 +393,12 @@ export const MoneyRequestsView: React.FC = () => {
               initial={{ opacity: 0, scale: 0.94 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.94 }}
-              className="glass-card rounded-3xl p-6 sm:p-8 border border-slate-700 max-w-md w-full shadow-2xl relative"
+              className="bg-slate-900 rounded-3xl p-6 sm:p-8 border border-slate-700 max-w-md w-full shadow-2xl relative"
             >
               <div className="flex justify-between items-center mb-5">
-                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
                   <Sparkles className="w-5 h-5 text-emerald-400" />
-                  New Money Request
+                  New Money Request / Loan
                 </h3>
                 <button
                   onClick={() => setShowCreateModal(false)}
@@ -374,7 +419,7 @@ export const MoneyRequestsView: React.FC = () => {
                     required
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 text-xs font-medium focus:border-emerald-500 outline-none"
                   >
-                    <option value="">-- Choose User --</option>
+                    <option value="">-- Choose User / Friend --</option>
                     {availablePayers.map((user) => (
                       <option key={user.id} value={user.id}>
                         {user.name} ({user.phone})
@@ -406,11 +451,23 @@ export const MoneyRequestsView: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-                    Memo
+                    Borrow Time Limit / Repayment Due Date (Optional)
+                  </label>
+                  <input
+                    type="date"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 text-xs focus:border-emerald-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                    Memo / Reason
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. Hackathon travel expense"
+                    placeholder="e.g. PSTU Hackathon registration reimbursement"
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 text-xs focus:border-emerald-500 outline-none"

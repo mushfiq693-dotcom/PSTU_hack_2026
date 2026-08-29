@@ -65,6 +65,10 @@ export async function seedDatabase(): Promise<void> {
     await client.query('BEGIN');
 
     // Clean existing data
+    await client.query('DELETE FROM bill_split_items');
+    await client.query('DELETE FROM bill_splits');
+    await client.query('DELETE FROM notifications');
+    await client.query('DELETE FROM connections');
     await client.query('DELETE FROM idempotency_records');
     await client.query('DELETE FROM money_requests');
     await client.query('DELETE FROM ledger_entries');
@@ -137,7 +141,6 @@ export async function seedDatabase(): Promise<void> {
     }
 
     // 3. Seed Realistic Sample Peer-to-Peer Transactions
-    // Sample Transfer 1: Shakib -> Tanmoy (BDT 2,500 = 250,000 poisha for "Team Dinner")
     const tx1Amount = 250000;
     const tx1Id = uuidv4();
     const shakibWallet = 'wlt_shakib_01';
@@ -164,50 +167,85 @@ export async function seedDatabase(): Promise<void> {
       [uuidv4(), tx1Id, tanmoyWallet, tx1Amount, INITIAL_BALANCE_POISHA + tx1Amount]
     );
 
-    // Sample Transfer 2: Mehraj -> Sadia (BDT 1,200 = 120,000 poisha for "Hackathon Registration")
-    const tx2Amount = 120000;
-    const tx2Id = uuidv4();
-    const mehrajWallet = 'wlt_mehraj_03';
-    const sadiaWallet = 'wlt_sadia_04';
-
-    await client.query(`UPDATE wallets SET balance = balance - $1 WHERE id = $2`, [tx2Amount, mehrajWallet]);
-    await client.query(`UPDATE wallets SET balance = balance + $1 WHERE id = $2`, [tx2Amount, sadiaWallet]);
-
+    // 4. Seed Connections (Friends & Family)
+    // Shakib is friends with Tanmoy & Rahim, and family with Sadia & Mehraj
     await client.query(
-      `INSERT INTO transactions (id, reference_id, sender_wallet_id, receiver_wallet_id, type, amount, fee, note, category, status)
-       VALUES ($1, $2, $3, $4, 'TRANSFER', $5, 0, 'Hackathon Registration fee', 'Events', 'SUCCESS')`,
-      [tx2Id, `TXN-${Date.now()}-002`, mehrajWallet, sadiaWallet, tx2Amount]
+      `INSERT INTO connections (id, user_id, connected_user_id, relation_type, status)
+       VALUES 
+       ($1, 'usr_shakib_01', 'usr_tanmoy_02', 'FRIEND', 'ACCEPTED'),
+       ($2, 'usr_shakib_01', 'usr_rahim_05', 'FRIEND', 'ACCEPTED'),
+       ($3, 'usr_shakib_01', 'usr_sadia_04', 'FAMILY', 'ACCEPTED'),
+       ($4, 'usr_shakib_01', 'usr_mehraj_03', 'FAMILY', 'ACCEPTED'),
+       ($5, 'usr_tanmoy_02', 'usr_mehraj_03', 'FRIEND', 'ACCEPTED'),
+       ($6, 'usr_tanmoy_02', 'usr_sadia_04', 'FRIEND', 'ACCEPTED')`,
+      [uuidv4(), uuidv4(), uuidv4(), uuidv4(), uuidv4(), uuidv4()]
+    );
+
+    // 5. Seed Money Requests with Dynamic Borrow Time Limits
+    // Request 1: Sadia requests BDT 1,500 from Shakib (Due in 12 hours -> DUE_SOON)
+    const dueSoonDate = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
+    const req1Id = uuidv4();
+    await client.query(
+      `INSERT INTO money_requests (id, requester_id, payer_id, amount, note, due_date, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'PENDING')`,
+      [req1Id, 'usr_sadia_04', 'usr_shakib_01', 150000, 'PSTU Hackathon travel reimbursement', dueSoonDate]
+    );
+
+    // Request 2: Rahim requests BDT 3,000 from Tanmoy (Was due yesterday -> OVERDUE)
+    const overdueDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const req2Id = uuidv4();
+    await client.query(
+      `INSERT INTO money_requests (id, requester_id, payer_id, amount, note, due_date, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'PENDING')`,
+      [req2Id, 'usr_rahim_05', 'usr_tanmoy_02', 300000, 'Cloud Server GPU hosting cost', overdueDate]
+    );
+
+    // 6. Seed In-App Notifications
+    await client.query(
+      `INSERT INTO notifications (id, user_id, type, reference_id, title, message, is_read)
+       VALUES 
+       ($1, 'usr_shakib_01', 'MONEY_NEED', $2, 'Money Request from Sadia Afrin', 'Sadia requested ৳1,500 for travel reimbursement. Settle soon.', FALSE),
+       ($3, 'usr_tanmoy_02', 'MONEY_NEED', $4, 'Urgent: Hosting Fee Request', 'Rahim requested ৳3,000 for GPU cloud hosting.', FALSE)`,
+      [uuidv4(), req1Id, uuidv4(), req2Id]
+    );
+
+    // 7. Seed Bill Splits (Restaurant, Travel, Tour, Team Registration)
+    // Bill Split 1: PSTU Cafeteria Team Lunch (Restaurant)
+    const split1Id = uuidv4();
+    await client.query(
+      `INSERT INTO bill_splits (id, creator_id, title, total_amount, category, status)
+       VALUES ($1, 'usr_shakib_01', 'PSTU Cafeteria Team Lunch', 450000, 'RESTAURANT', 'ACTIVE')`,
+      [split1Id]
     );
 
     await client.query(
-      `INSERT INTO ledger_entries (id, transaction_id, wallet_id, entry_type, amount, balance_after)
-       VALUES ($1, $2, $3, 'DEBIT', $4, $5)`,
-      [uuidv4(), tx2Id, mehrajWallet, tx2Amount, INITIAL_BALANCE_POISHA - tx2Amount]
+      `INSERT INTO bill_split_items (id, bill_split_id, user_id, share_amount, is_paid, paid_at)
+       VALUES 
+       ($1, $2, 'usr_shakib_01', 150000, TRUE, CURRENT_TIMESTAMP),
+       ($3, $2, 'usr_tanmoy_02', 150000, FALSE, NULL),
+       ($4, $2, 'usr_mehraj_03', 150000, FALSE, NULL)`,
+      [uuidv4(), split1Id, uuidv4(), uuidv4()]
+    );
+
+    // Bill Split 2: Hackathon Microbus Travel (Travel)
+    const split2Id = uuidv4();
+    await client.query(
+      `INSERT INTO bill_splits (id, creator_id, title, total_amount, category, status)
+       VALUES ($1, 'usr_tanmoy_02', 'Dhaka-Patuakhali Microbus Rent', 600000, 'TRAVEL', 'ACTIVE')`,
+      [split2Id]
     );
 
     await client.query(
-      `INSERT INTO ledger_entries (id, transaction_id, wallet_id, entry_type, amount, balance_after)
-       VALUES ($1, $2, $3, 'CREDIT', $4, $5)`,
-      [uuidv4(), tx2Id, sadiaWallet, tx2Amount, INITIAL_BALANCE_POISHA + tx2Amount]
-    );
-
-    // 4. Seed Sample Money Requests
-    // Request 1: Sadia requests BDT 1,500 from Shakib (Pending)
-    await client.query(
-      `INSERT INTO money_requests (id, requester_id, payer_id, amount, note, status)
-       VALUES ($1, $2, $3, $4, $5, 'PENDING')`,
-      [uuidv4(), 'usr_sadia_04', 'usr_shakib_01', 150000, 'PSTU Hackathon travel expense reimbursement']
-    );
-
-    // Request 2: Rahim requests BDT 3,000 from Tanmoy (Pending)
-    await client.query(
-      `INSERT INTO money_requests (id, requester_id, payer_id, amount, note, status)
-       VALUES ($1, $2, $3, $4, $5, 'PENDING')`,
-      [uuidv4(), 'usr_rahim_05', 'usr_tanmoy_02', 300000, 'Cloud Server hosting cost']
+      `INSERT INTO bill_split_items (id, bill_split_id, user_id, share_amount, is_paid, paid_at)
+       VALUES 
+       ($1, $2, 'usr_tanmoy_02', 200000, TRUE, CURRENT_TIMESTAMP),
+       ($3, $2, 'usr_shakib_01', 200000, FALSE, NULL),
+       ($4, $2, 'usr_sadia_04', 200000, FALSE, NULL)`,
+      [uuidv4(), split2Id, uuidv4(), uuidv4()]
     );
 
     await client.query('COMMIT');
-    console.log('✅ Seeded 5 Demo accounts, Initial Ledgers, Transactions & Money Requests in PostgreSQL.');
+    console.log('✅ Seeded Demo Users, Connections, Dynamic Money Requests, Notifications & Bill Splits.');
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('❌ Failed to seed PostgreSQL database:', err);

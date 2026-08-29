@@ -13,12 +13,14 @@ interface LandingPageProps {
   onAuthSuccess?: () => void;
   openAuthModalDirectly?: 'login' | 'register' | null;
   onCloseDirectModal?: () => void;
+  setActiveTab?: (tab: any) => void;
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({
   onAuthSuccess,
   openAuthModalDirectly = null,
   onCloseDirectModal,
+  setActiveTab,
 }) => {
   const [cycle, setCycle] = useState<number>(0);
   const [shakibBalance, setShakibBalance] = useState<number>(100000);

@@ -5,12 +5,12 @@ import { RequestService } from '../services/requestService';
 export class RequestController {
   /**
    * POST /api/requests
-   * Create a new money request in PostgreSQL
+   * Create a new money request in PostgreSQL with optional borrow due date
    */
   public static async create(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const requesterId = req.user!.id;
-      const { payer_id, payer_phone, amount_bdt, note } = req.body;
+      const { payer_id, payer_phone, amount_bdt, note, due_date } = req.body;
 
       if (!amount_bdt || typeof amount_bdt !== 'number' || amount_bdt <= 0) {
         res.status(400).json({
@@ -27,7 +27,8 @@ export class RequestController {
         payerId: payer_id,
         payerPhone: payer_phone,
         amountPoisha,
-        note
+        note,
+        dueDate: due_date
       });
 
       res.status(201).json({
@@ -46,7 +47,7 @@ export class RequestController {
 
   /**
    * GET /api/requests
-   * List money requests (incoming, outgoing, or all)
+   * List money requests (incoming, outgoing, or all) with computed overdue statuses
    */
   public static async list(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {

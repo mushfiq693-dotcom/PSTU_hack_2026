@@ -1,8 +1,12 @@
 export type TransactionType = 'TRANSFER' | 'REQUEST_SETTLEMENT' | 'SEED_FUNDING' | 'BILL_SPLIT';
 export type TransactionStatus = 'SUCCESS' | 'FAILED' | 'PENDING';
 export type LedgerEntryType = 'DEBIT' | 'CREDIT';
-export type RequestStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'CANCELLED' | 'EXPIRED';
+export type RequestStatus = 'PENDING' | 'OVERDUE' | 'DUE_SOON' | 'ACCEPTED' | 'REJECTED' | 'CANCELLED' | 'EXPIRED';
 export type WalletStatus = 'ACTIVE' | 'FROZEN' | 'CLOSED';
+export type RelationType = 'FRIEND' | 'FAMILY';
+export type ConnectionStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED';
+export type NotificationType = 'MONEY_NEED' | 'DEBT_REMINDER';
+export type BillCategory = 'RESTAURANT' | 'TRAVEL' | 'TOUR' | 'TEAM_REGISTRATION';
 
 export interface User {
   id: string;
@@ -69,7 +73,9 @@ export interface MoneyRequest {
   payer_id: string;
   amount: number; // in Poisha
   note: string | null;
+  due_date: string | null;
   status: RequestStatus;
+  computed_status?: RequestStatus;
   transaction_id: string | null;
   created_at: string;
   resolved_at: string | null;
@@ -79,6 +85,58 @@ export interface MoneyRequest {
   payer_name?: string;
   payer_phone?: string;
   payer_avatar?: string;
+}
+
+export interface Connection {
+  id: string;
+  user_id: string;
+  connected_user_id: string;
+  relation_type: RelationType;
+  status: ConnectionStatus;
+  created_at: string;
+  connected_name?: string;
+  connected_phone?: string;
+  connected_avatar?: string;
+  connected_email?: string;
+  direction?: 'INCOMING' | 'OUTGOING' | 'MUTUAL';
+}
+
+export interface InAppNotification {
+  id: string;
+  user_id: string;
+  type: NotificationType;
+  reference_id: string | null;
+  title: string;
+  message: string;
+  is_read: boolean;
+  created_at: string;
+  is_synthesized?: boolean;
+}
+
+export interface BillSplitItem {
+  id: string;
+  bill_split_id: string;
+  user_id: string;
+  share_amount: number; // in Poisha
+  is_paid: boolean;
+  paid_at: string | null;
+  transaction_id: string | null;
+  user_name?: string;
+  user_phone?: string;
+  user_avatar?: string;
+}
+
+export interface BillSplit {
+  id: string;
+  creator_id: string;
+  title: string;
+  total_amount: number; // in Poisha
+  category: BillCategory;
+  status: 'ACTIVE' | 'SETTLED';
+  created_at: string;
+  creator_name?: string;
+  creator_phone?: string;
+  participants: BillSplitItem[];
 }
 
 export interface TransferRequestDto {
@@ -96,6 +154,18 @@ export interface CreateMoneyRequestDto {
   payer_phone?: string;
   amount_bdt: number;
   note?: string;
+  due_date?: string;
+}
+
+export interface CreateBillSplitDto {
+  title: string;
+  total_amount_bdt: number;
+  category: BillCategory;
+  participants: Array<{
+    user_id?: string;
+    phone?: string;
+    share_amount_bdt: number;
+  }>;
 }
 
 export interface StressTestRequestDto {
