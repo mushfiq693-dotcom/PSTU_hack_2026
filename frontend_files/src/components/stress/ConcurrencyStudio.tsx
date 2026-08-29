@@ -14,7 +14,11 @@ import {
   Sparkles
 } from 'lucide-react';
 
-export const ConcurrencyStudio: React.FC = () => {
+interface ConcurrencyStudioProps {
+  setActiveTab?: (tab: any) => void;
+}
+
+export const ConcurrencyStudio: React.FC<ConcurrencyStudioProps> = ({ setActiveTab }) => {
   const { allUsers, refreshUserData } = useAuth();
 
   const [senderId, setSenderId] = useState<string>('usr_shakib_01');
@@ -70,6 +74,15 @@ export const ConcurrencyStudio: React.FC = () => {
             Test PostgreSQL row locking under simultaneous parallel transfer bursts
           </p>
         </div>
+
+        {setActiveTab && (
+          <button
+            onClick={() => setActiveTab('dashboard')}
+            className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-semibold text-slate-300 hover:text-white transition-all self-start sm:self-auto"
+          >
+            ← Back to Overview
+          </button>
+        )}
       </div>
 
       {/* Preset Scenarios */}

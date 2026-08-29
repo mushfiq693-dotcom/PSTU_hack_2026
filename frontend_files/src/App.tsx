@@ -78,7 +78,7 @@ const AppContent: React.FC = () => {
               {activeTab === 'splits' && <BillSplitView />}
               {activeTab === 'connections' && <ConnectionsView setActiveTab={setActiveTab} />}
               {activeTab === 'ledger' && <LedgerAuditView />}
-              {activeTab === 'stress' && <ConcurrencyStudio />}
+              {activeTab === 'stress' && <ConcurrencyStudio setActiveTab={setActiveTab} />}
             </motion.div>
           </AnimatePresence>
         )}

@@ -4,7 +4,6 @@ import { useAuth } from '../../context/AuthContext';
 import { TabType } from '../../types';
 import { FastPayLogo } from '../common/FastPayLogo';
 import { NotificationBell } from '../notifications/NotificationBell';
-import { SideMenuDrawer } from './SideMenuDrawer';
 import { ProfileModal } from '../auth/ProfileModal';
 import {
   ArrowRightLeft,
@@ -15,10 +14,10 @@ import {
   Users2,
   Receipt,
   LogOut,
-  Menu,
-  Sparkles,
-  User,
-  Settings
+  Zap,
+  LogIn,
+  UserPlus,
+  User
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -43,7 +42,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   } = useAuth();
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -71,35 +69,40 @@ export const Navbar: React.FC<NavbarProps> = ({
       <header className="sticky top-0 z-40 w-full border-b border-slate-800/80 bg-[#090d16]/90 backdrop-blur-2xl transition-colors">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between gap-4">
           
-          {/* Brand Logo & Side Menu Trigger */}
-          <div className="flex items-center gap-3 shrink-0">
-            {isAuthenticated && (
-              <button
-                onClick={() => setDrawerOpen(true)}
-                title="Open Audit & System Menu"
-                className="p-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-emerald-400 transition-all flex items-center gap-1.5 text-xs font-semibold"
-              >
-                <Menu className="w-4 h-4" />
-                <span className="hidden sm:inline">System & Audit</span>
-              </button>
-            )}
-
-            <div
-              onClick={() => {
-                if (isAuthenticated) {
-                  setActiveTab('dashboard');
-                } else {
-                  setActiveTab('landing');
-                }
-              }}
-              className="cursor-pointer flex items-center shrink-0"
-            >
-              <FastPayLogo size="md" />
-            </div>
+          {/* Brand Logo (Click takes to Dashboard / Landing) */}
+          <div
+            onClick={() => {
+              if (isAuthenticated) {
+                setActiveTab('dashboard');
+              } else {
+                setActiveTab('landing');
+              }
+            }}
+            className="cursor-pointer flex items-center shrink-0"
+          >
+            <FastPayLogo size="md" />
           </div>
 
-          {/* When Authenticated: Focused 4 Daily Core Tabs + Profile */}
-          {isAuthenticated && (
+          {/* When NOT Authenticated: Zero tabs, only Log In / Register buttons */}
+          {!isAuthenticated ? (
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => openAuthModal && openAuthModal('login')}
+                className="text-xs font-semibold text-slate-300 hover:text-white px-3 py-2 transition-colors flex items-center gap-1.5"
+              >
+                <LogIn className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Log In</span>
+              </button>
+              <button
+                onClick={() => openAuthModal && openAuthModal('register')}
+                className="text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-4 py-2 rounded-xl shadow-md shadow-emerald-950/40 transition-all flex items-center gap-1.5"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>Register</span>
+              </button>
+            </div>
+          ) : (
+            /* When Authenticated: Focused 4 Daily Core Tabs + Concurrency Lab + Profile */
             <>
               {/* Central Clean Nav Tabs */}
               <nav className="hidden md:flex items-center bg-slate-950/80 p-1.5 rounded-2xl border border-slate-800 shadow-inner">
@@ -128,8 +131,25 @@ export const Navbar: React.FC<NavbarProps> = ({
                 })}
               </nav>
 
-              {/* Right side actions: Notifications & Persona Switcher */}
+              {/* Right side actions: Concurrency Lab + Notifications + Persona Switcher */}
               <div className="flex items-center gap-2.5">
+                
+                {/* Sleek Concurrency & Stress Lab Demo Button */}
+                <motion.button
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => setActiveTab('stress')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border shadow-sm ${
+                    activeTab === 'stress'
+                      ? 'bg-indigo-600 text-white border-indigo-500 shadow-indigo-950/50'
+                      : 'bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
+                  }`}
+                  title="Open Concurrency & Stress Testing Lab for Live Judge Demos"
+                >
+                  <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                  <span className="hidden sm:inline">Concurrency Lab</span>
+                </motion.button>
+
                 {/* In-App Notifications Bell */}
                 <NotificationBell setActiveTab={setActiveTab} />
 
@@ -295,24 +315,15 @@ export const Navbar: React.FC<NavbarProps> = ({
         )}
       </header>
 
-      {/* Side Menu Drawer for System & Audit */}
+      {/* Profile Modal */}
       {isAuthenticated && (
-        <>
-          <SideMenuDrawer
-            isOpen={drawerOpen}
-            onClose={() => setDrawerOpen(false)}
-            activeTab={activeTab}
-            setActiveTab={setActiveTab}
-          />
-
-          <ProfileModal
-            isOpen={profileModalOpen}
-            onClose={() => setProfileModalOpen(false)}
-            onLogout={() => {
-              setActiveTab('landing');
-            }}
-          />
-        </>
+        <ProfileModal
+          isOpen={profileModalOpen}
+          onClose={() => setProfileModalOpen(false)}
+          onLogout={() => {
+            setActiveTab('landing');
+          }}
+        />
       )}
     </>
   );
