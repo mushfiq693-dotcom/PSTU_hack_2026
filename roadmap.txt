@@ -1,0 +1,260 @@
+# ==============================================================================
+# PSTU NATIONAL HACKATHON 2026: MONEY MOVEMENT APPLICATION
+# COMPLETE SYSTEM BLUEPRINT, TECHNICAL ARCHITECTURE & EXECUTION ROADMAP
+# ==============================================================================
+# Project Codename: NexusPay Engine (Enterprise-Grade Money Movement Platform)
+# Target Code Freeze: 3:00 PM (Strict 6-Hour Window)
+# ==============================================================================
+
+--------------------------------------------------------------------------------
+1. EXECUTIVE SUMMARY & PROBLEM RESOLUTION
+--------------------------------------------------------------------------------
+The Challenge requires building a digital money movement system with simulated
+funds (BDT 100,000 auto-funded per user), while explicitly addressing real-world
+engineering hurdles:
+  - Race conditions & double-spending under concurrent requests
+  - Network flakiness & duplicate click handling (Idempotency)
+  - Mathematical integrity & auditability (Double-Entry Bookkeeping)
+  - Real-world flows: Direct P2P transfers, Money Requests, and Bill Splitting
+  - Scalability for 10M+ users with sub-millisecond local latency
+
+--------------------------------------------------------------------------------
+2. CORE ENGINEERING PILLARS (JUDGING CRITERIA DEFENSE)
+--------------------------------------------------------------------------------
+Pillar A: Double-Entry Ledger Pattern (Financial Standard)
+  - Every money movement produces TWO immutable ledger entries:
+      1. DEBIT: Deducts from Sender Account
+      2. CREDIT: Adds to Receiver Account
+  - Invariant: SUM(Debit) - SUM(Credit) = 0 across the entire system.
+  - User wallet balance is a cached projection of the immutable ledger history.
+
+Pillar B: Concurrency & Race Condition Defense (ACID Guarantees)
+  - Uses SQLite in WAL (Write-Ahead Logging) mode with `BEGIN IMMEDIATE` transactions.
+  - Locks sender & receiver balances in consistent order to prevent deadlocks.
+  - Guarantees that even if 50 concurrent transfer requests hit an account with
+    only BDT 1,000 simultaneously, exactly 1 will succeed and 49 will safely fail
+    with zero balance discrepancy.
+
+Pillar C: Network Resilience & Idempotency Engine
+  - Every mutation request accepts an `Idempotency-Key` HTTP Header.
+  - If a user rapidly taps "Send Money" or their mobile connection retries,
+    the server detects the duplicate key and returns the original transaction
+    receipt without executing a second debit.
+
+Pillar D: Risk, Velocity & Limits Enforcement
+  - Per-transaction and daily volume limits (e.g., max BDT 50,000 single transfer).
+  - Velocity checks preventing rapid bot-like spamming.
+
+Pillar E: The "Judge Magnet" Concurrency & Resilience Studio
+  - A visual interactive dashboard where judges can click "Simulate 20 Concurrent
+    Transfers" with a single click and watch live transaction safety & ledger
+    verification graphs.
+
+--------------------------------------------------------------------------------
+3. DATABASE SCHEMA & ENTITY RELATIONSHIPS
+--------------------------------------------------------------------------------
+
+[Users]
+  - id (UUID / PK)
+  - name (String)
+  - phone (String, Unique)
+  - email (String, Unique)
+  - avatar (String)
+  - pin (Hashed String)
+  - created_at (DateTime)
+
+[Wallets]
+  - id (UUID / PK)
+  - user_id (FK -> Users.id)
+  - currency (Default "BDT")
+  - balance (Decimal / Integer in Cents to avoid floating point errors)
+  - status (ACTIVE, FROZEN)
+  - updated_at (DateTime)
+
+[Transactions] (High-level business record)
+  - id (UUID / PK)
+  - reference_id (String, Unique e.g. "TXN-2026-XXXX")
+  - sender_wallet_id (FK -> Wallets.id)
+  - receiver_wallet_id (FK -> Wallets.id)
+  - type (TRANSFER, REQUEST_SETTLEMENT, BILL_SPLIT, INITIAL_SEED)
+  - amount (Decimal)
+  - fee (Decimal, default 0)
+  - note (String)
+  - category (General, Food, Rent, Entertainment, Utility)
+  - status (SUCCESS, FAILED, PENDING)
+  - idempotency_key (String, Unique nullable)
+  - created_at (DateTime)
+
+[LedgerEntries] (Immutable Double-Entry records)
+  - id (UUID / PK)
+  - transaction_id (FK -> Transactions.id)
+  - wallet_id (FK -> Wallets.id)
+  - entry_type (DEBIT / CREDIT)
+  - amount (Decimal)
+  - balance_after (Decimal)
+  - created_at (DateTime)
+
+[MoneyRequests] (P2P Invoices)
+  - id (UUID / PK)
+  - requester_id (FK -> Users.id)
+  - payer_id (FK -> Users.id)
+  - amount (Decimal)
+  - note (String)
+  - status (PENDING, ACCEPTED, DECLINED, CANCELLED)
+  - transaction_id (FK -> Transactions.id, Nullable)
+  - created_at (DateTime)
+  - resolved_at (DateTime, Nullable)
+
+[BillSplits] (Multi-party expense sharing)
+  - id (UUID / PK)
+  - creator_id (FK -> Users.id)
+  - title (String, e.g. "PSTU Hackathon Lunch")
+  - total_amount (Decimal)
+  - split_type (EQUAL / EXACT)
+  - status (ACTIVE, SETTLED)
+  - created_at (DateTime)
+
+[BillSplitItems]
+  - id (UUID / PK)
+  - bill_split_id (FK -> BillSplits.id)
+  - user_id (FK -> Users.id)
+  - share_amount (Decimal)
+  - is_paid (Boolean)
+  - paid_at (DateTime, Nullable)
+
+[IdempotencyLogs]
+  - key (String / PK)
+  - user_id (FK -> Users.id)
+  - response_status (Integer)
+  - response_body (JSON / Text)
+  - created_at (DateTime)
+
+--------------------------------------------------------------------------------
+4. API SPECIFICATION & ROUTING
+--------------------------------------------------------------------------------
+
+Authentication & Users:
+  - GET  /api/users                      -> List active users (for easy switcher)
+  - GET  /api/users/me                   -> Current authenticated user & wallet
+  - POST /api/users/switch/:id           -> Switch active demo user (instant demo)
+  - POST /api/auth/register              -> Register new user (auto-seeds ৳100,000)
+
+Wallet & Transfers:
+  - GET  /api/wallet/summary             -> Balance, 24h spending, daily limit left
+  - POST /api/transfers                  -> Execute atomic P2P transfer
+         Headers: Idempotency-Key: <uuid>
+         Body: { receiverPhone, amount, note, category, pin }
+  - GET  /api/transfers/:id/receipt      -> Download/view cryptographic transfer slip
+
+Money Requests (Invoicing):
+  - GET  /api/requests                   -> List incoming & outgoing requests
+  - POST /api/requests                   -> Create new money request
+  - POST /api/requests/:id/accept        -> Atomically pay a pending request
+  - POST /api/requests/:id/decline       -> Decline a pending request
+
+Bill Splitter:
+  - GET  /api/splits                     -> List user's active/past split bills
+  - POST /api/splits                     -> Create multi-user split bill
+  - POST /api/splits/:id/pay             -> Settle personal share atomically
+
+Ledger & Analytics:
+  - GET  /api/ledger/audit               -> Full double-entry balance check
+  - GET  /api/analytics/insights         -> Spending by category, cashflow chart
+
+Stress-Testing & Concurrency Lab:
+  - POST /api/dev/stress-test            -> Triggers N concurrent transfers
+         Body: { senderId, receiverId, count: 20, amountEach: 500 }
+         Returns: { totalAttempts, succeeded, rejectedDueToBalance, durationMs, auditBalanceValid }
+
+--------------------------------------------------------------------------------
+5. FRONTEND USER EXPERIENCE & UI SCREENS
+--------------------------------------------------------------------------------
+Screen 1: Fintech Command Center (Dashboard)
+  - Dynamic gradient wallet balance card (BDT ৳ 100,000)
+  - Quick Action Buttons: [Send Money] [Request Money] [Split Bill] [Scan QR]
+  - Visual Spending Limit progress bar (e.g. ৳12,500 / ৳50,000 daily limit used)
+  - Quick Contacts Tray (One-tap selection of fellow participants/test users)
+  - Live Transaction Feed with status pills and category icons
+
+Screen 2: Send Money Modal / Flow
+  - Instant user search by Phone / Username with recipient avatar preview
+  - Large currency keypad with BDT quick-pick chips (+৳500, +৳1,000, +৳5,000)
+  - Category selector & customizable note
+  - Double-click protection with animated confirmation button
+  - Instant animated success modal with shareable receipt
+
+Screen 3: Money Request & Bill Split Hub
+  - Incoming Requests Drawer: "Tanmoy requested ৳1,200 for Pizza" -> [Pay Now] [Decline]
+  - Outgoing Requests Tracker with real-time status badges
+  - Bill Split Builder: Add multiple participants, auto-calculate equal shares,
+    track who has paid with progress donut chart
+
+Screen 4: Double-Entry Ledger & Audit Explorer
+  - Full transparent log of Debit & Credit ledger entries
+  - Live "System Invariant Check": SUM(Debits) === SUM(Credits) verified live
+  - Search & filter by reference code, date range, or transaction type
+
+Screen 5: Concurrency & Stress Testing Studio (The Judge Differentiator)
+  - Visual simulation interface with customizable concurrency slider (5 to 50 threads)
+  - Live execution terminal and real-time result summary:
+    * Total Sent: 20 requests
+    * Handled by ACID Locks: 1 Success, 19 Insufficient Funds (Zero Double-Spend)
+    * Latency per request: ~2.4ms
+    * Ledger Discrepancy: ৳0.00 (100% Mathematically Sound)
+
+--------------------------------------------------------------------------------
+6. DETAILED EXECUTION TIMELINE (6-HOUR SPRINT)
+--------------------------------------------------------------------------------
+
+[PHASE 1] 09:40 - 10:20 (Scaffolding & Architecture)
+  1. Initialize Monorepo: `client` (Vite+React+TS+Tailwind) & `server` (Node+TS+Express)
+  2. Set up SQLite with WAL mode and migration schema (Users, Wallets, Transactions,
+     LedgerEntries, MoneyRequests, BillSplits)
+  3. Seed initial dataset (5 distinct demo users with ৳100,000 starting balance)
+
+[PHASE 2] 10:20 - 11:40 (Core Transaction Engine & Business Logic)
+  1. Implement Atomic Transfer Engine with `BEGIN IMMEDIATE` and pessimistic locks
+  2. Implement Double-Entry Ledger creation on every mutation
+  3. Build Idempotency Key middleware with automatic cache replay
+  4. Build Money Request & Bill Split settlement services
+
+[PHASE 3] 11:40 - 13:00 (Fintech UI & Dashboard Experience)
+  1. Design premium dark/light modern UI design tokens and components
+  2. Build interactive dashboard with wallet cards, quick contacts, and feeds
+  3. Build Send Money drawer with instant recipient validation and receipt generator
+
+[PHASE 4] 13:00 - 14:15 (Interactive Flows & Concurrency Studio)
+  1. Build Request Money & Bill Split interactive screens
+  2. Build the Live Concurrency & Stress Testing Studio
+  3. Build QR Code generator & scanner simulation
+
+[PHASE 5] 14:15 - 15:00 (Verification, Polishing & Demo Rehearsal)
+  1. End-to-end testing across all user accounts
+  2. Generate comprehensive README with architecture diagrams and API docs
+  3. Prepare 3-minute judging pitch & live demo flow
+  4. Final git commit and tag before 3:00 PM Code Freeze
+
+--------------------------------------------------------------------------------
+7. JUDGES DEFENSE & Q&A CHEAT SHEET
+--------------------------------------------------------------------------------
+Q1: "How do you guarantee that a user cannot double-spend by sending two requests simultaneously?"
+A1: "We use atomic database transactions with SQLite's WAL mode and `BEGIN IMMEDIATE` locks.
+     When a transfer initiates, the sender's balance is verified and debited inside an isolated
+     transaction lock. Any concurrent thread is serialized or safely rejected if funds drop below
+     the required amount."
+
+Q2: "Why double-entry ledger instead of just updating a balance column?"
+A2: "In real-world financial architectures, balance columns can suffer from data corruption or race
+     drift. With double-entry bookkeeping, every transfer creates an immutable Debit and Credit entry.
+     The balance is mathematically provable and can be reconciled at any millisecond."
+
+Q3: "How does the system handle flaky mobile connections?"
+A3: "Our client generates a unique Idempotency-Key for every transaction intent. If the client
+     re-sends due to a timeout, our idempotency middleware returns the cached original result
+     rather than executing a duplicate charge."
+
+Q4: "How will this scale to 10M+ users?"
+A4: "The architecture is modular with clean separation between the Ledger, Transfer Engine, and
+     User Presentation layers. The schema supports horizontal sharding by wallet partition or
+     migrating to PostgreSQL/CockroachDB with distributed row locks."
+==============================================================================
