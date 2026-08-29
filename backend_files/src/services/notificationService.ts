@@ -108,4 +108,22 @@ export class NotificationService {
       [userId]
     );
   }
+
+  /**
+   * Create and persist a new notification in PostgreSQL
+   */
+  public static async createNotification(
+    userId: string,
+    type: string,
+    title: string,
+    message: string,
+    referenceId?: string
+  ): Promise<void> {
+    const id = uuidv4();
+    await pool.query(
+      `INSERT INTO notifications (id, user_id, type, reference_id, title, message, is_read, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, FALSE, CURRENT_TIMESTAMP)`,
+      [id, userId, type, referenceId || null, title, message]
+    );
+  }
 }

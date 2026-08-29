@@ -1,6 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, CheckCheck, Clock, AlertTriangle, ArrowUpRight, DollarSign } from 'lucide-react';
+import {
+  Bell,
+  CheckCheck,
+  Clock,
+  AlertTriangle,
+  ArrowDownLeft,
+  ArrowUpRight,
+  UserCheck,
+  CheckCircle2,
+  XCircle,
+  Receipt,
+  Sparkles,
+  Wallet
+} from 'lucide-react';
 import { ApiService } from '../../services/api';
 import { InAppNotification, TabType } from '../../types';
 
@@ -28,7 +41,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ setActiveTab
 
   useEffect(() => {
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 10000); // Polling every 10s
+    const interval = setInterval(fetchNotifications, 5000); // Polling every 5s
     return () => clearInterval(interval);
   }, []);
 
@@ -58,10 +71,12 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ setActiveTab
     }
     setIsOpen(false);
 
-    if (notif.type === 'MONEY_NEED') {
+    if (notif.type === 'MONEY_NEED' || notif.type === 'REQUEST_RECEIVED' || notif.type === 'REQUEST_ACCEPTED' || notif.type === 'REQUEST_REJECTED' || notif.type === 'DEBT_REMINDER') {
       setActiveTab('requests');
-    } else if (notif.type === 'DEBT_REMINDER') {
-      setActiveTab('requests');
+    } else if (notif.type === 'TRANSFER_RECEIVED' || notif.type === 'TRANSFER_SENT') {
+      setActiveTab('dashboard');
+    } else if (notif.type === 'BILL_SPLIT') {
+      setActiveTab('splits');
     }
   };
 
@@ -71,6 +86,60 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ setActiveTab
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const getNotificationVisuals = (type: string) => {
+    switch (type) {
+      case 'TRANSFER_RECEIVED':
+        return {
+          icon: ArrowDownLeft,
+          color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+          badge: 'Money In',
+        };
+      case 'TRANSFER_SENT':
+        return {
+          icon: ArrowUpRight,
+          color: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+          badge: 'Money Out',
+        };
+      case 'MONEY_NEED':
+      case 'REQUEST_RECEIVED':
+        return {
+          icon: UserCheck,
+          color: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+          badge: 'Invoice',
+        };
+      case 'REQUEST_ACCEPTED':
+        return {
+          icon: CheckCircle2,
+          color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+          badge: 'Accepted',
+        };
+      case 'REQUEST_REJECTED':
+        return {
+          icon: XCircle,
+          color: 'bg-rose-500/20 text-rose-400 border-rose-500/30',
+          badge: 'Declined',
+        };
+      case 'DEBT_REMINDER':
+        return {
+          icon: AlertTriangle,
+          color: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+          badge: 'Due Reminder',
+        };
+      case 'BILL_SPLIT':
+        return {
+          icon: Receipt,
+          color: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30',
+          badge: 'Split Bill',
+        };
+      default:
+        return {
+          icon: Wallet,
+          color: 'bg-slate-800 text-slate-300 border-slate-700',
+          badge: 'Notification',
+        };
     }
   };
 
@@ -84,7 +153,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ setActiveTab
           if (!isOpen) fetchNotifications();
         }}
         className="relative p-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-300 hover:text-white transition-all shadow-sm"
-        title="In-App Notifications"
+        title="Notifications"
       >
         <Bell className="w-4 h-4" />
         {unreadCount > 0 && (
@@ -107,7 +176,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ setActiveTab
             <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
               <div className="flex items-center gap-2">
                 <Bell className="w-4 h-4 text-emerald-400" />
-                <span className="text-xs font-bold text-slate-200">In-App Notifications</span>
+                <span className="text-xs font-bold text-slate-200">Notifications & Alerts</span>
                 {unreadCount > 0 && (
                   <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold">
                     {unreadCount} new
@@ -117,10 +186,10 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ setActiveTab
               {unreadCount > 0 && (
                 <button
                   onClick={handleMarkAllRead}
-                  className="text-[11px] text-slate-400 hover:text-emerald-400 flex items-center gap-1 transition-colors"
+                  className="text-[11px] text-slate-400 hover:text-emerald-400 flex items-center gap-1 transition-colors font-medium"
                 >
                   <CheckCheck className="w-3.5 h-3.5" />
-                  <span>Mark read</span>
+                  <span>Mark all read</span>
                 </button>
               )}
             </div>
@@ -128,13 +197,14 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ setActiveTab
             {/* List */}
             <div className="max-h-80 overflow-y-auto divide-y divide-slate-800/60">
               {notifications.length === 0 ? (
-                <div className="p-8 text-center text-xs text-slate-500">
-                  No notifications yet. You're all caught up!
+                <div className="p-8 text-center text-xs text-slate-500 space-y-1">
+                  <div className="text-slate-400 font-semibold">সব ক্লিয়ার! No notifications yet</div>
+                  <div>When someone sends money or requests funds, you will see it here.</div>
                 </div>
               ) : (
                 notifications.map((notif) => {
-                  const isDebt = notif.type === 'DEBT_REMINDER';
-                  const isMoneyNeed = notif.type === 'MONEY_NEED';
+                  const visuals = getNotificationVisuals(notif.type);
+                  const Icon = visuals.icon;
 
                   return (
                     <div
@@ -145,20 +215,18 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ setActiveTab
                       }`}
                     >
                       <div
-                        className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
-                          isDebt
-                            ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                            : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                        }`}
+                        className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5 border ${visuals.color}`}
                       >
-                        {isDebt ? <AlertTriangle className="w-4 h-4" /> : <DollarSign className="w-4 h-4" />}
+                        <Icon className="w-4 h-4" />
                       </div>
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-1 mb-1">
-                          <h5 className="text-xs font-semibold text-slate-200 truncate">
-                            {notif.title}
-                          </h5>
+                          <div className="flex items-center gap-1.5 truncate">
+                            <h5 className="text-xs font-semibold text-slate-200 truncate">
+                              {notif.title}
+                            </h5>
+                          </div>
                           {!notif.is_read && (
                             <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0"></span>
                           )}
@@ -174,11 +242,9 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ setActiveTab
                               minute: '2-digit'
                             })}
                           </span>
-                          {notif.is_synthesized && (
-                            <span className="text-amber-400 font-semibold px-1 bg-amber-500/10 rounded">
-                              Auto-Reminder
-                            </span>
-                          )}
+                          <span className={`px-1 rounded font-semibold text-[9px] border ${visuals.color}`}>
+                            {visuals.badge}
+                          </span>
                         </div>
                       </div>
 

@@ -4,6 +4,7 @@ import { MoneyRequest, RequestStatus } from '../types';
 import { TransferService, TransferResult } from './transferService';
 import { Logger } from '../utils/logger';
 import { MemoryCache } from '../utils/cache';
+import { NotificationService } from './notificationService';
 
 export interface CreateRequestParams {
   requesterId: string;
@@ -274,6 +275,16 @@ export class RequestService {
       referenceId: transferResult.transaction.reference_id,
     });
 
+    // Notify requester that money request was accepted & settled
+    const formattedAmount = (Number(request.amount) / 100).toLocaleString('en-US', { minimumFractionDigits: 2 });
+    NotificationService.createNotification(
+      request.requester_id,
+      'REQUEST_ACCEPTED',
+      `✅ ৳${formattedAmount} Request Accepted`,
+      `${request.payer_name || 'Payer'} accepted and paid your money request of ৳${formattedAmount}.`,
+      moneyRequestId
+    ).catch(() => {});
+
     return {
       request: updatedRequest,
       transfer: transferResult
@@ -317,6 +328,16 @@ export class RequestService {
        WHERE id = $1`,
       [moneyRequestId]
     );
+
+    // Notify requester that money request was declined
+    const formattedAmount = (Number(request.amount) / 100).toLocaleString('en-US', { minimumFractionDigits: 2 });
+    NotificationService.createNotification(
+      request.requester_id,
+      'REQUEST_REJECTED',
+      `❌ ৳${formattedAmount} Request Declined`,
+      `${request.payer_name || 'Payer'} declined your money request of ৳${formattedAmount}.`,
+      moneyRequestId
+    ).catch(() => {});
 
     Logger.info('REQUEST', 'REJECTED', 'Money request declined by payer', {
       requestId: httpReqId,

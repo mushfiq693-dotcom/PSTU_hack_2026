@@ -5,7 +5,15 @@ export type RequestStatus = 'PENDING' | 'OVERDUE' | 'DUE_SOON' | 'ACCEPTED' | 'R
 export type WalletStatus = 'ACTIVE' | 'FROZEN' | 'CLOSED';
 export type RelationType = 'FRIEND' | 'FAMILY';
 export type ConnectionStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED';
-export type NotificationType = 'MONEY_NEED' | 'DEBT_REMINDER';
+export type NotificationType = 
+  | 'MONEY_NEED' 
+  | 'DEBT_REMINDER' 
+  | 'TRANSFER_RECEIVED' 
+  | 'TRANSFER_SENT' 
+  | 'REQUEST_RECEIVED' 
+  | 'REQUEST_ACCEPTED' 
+  | 'REQUEST_REJECTED' 
+  | 'BILL_SPLIT';
 export type BillCategory = 'RESTAURANT' | 'TRAVEL' | 'TOUR' | 'TEAM_REGISTRATION';
 
 export interface User {

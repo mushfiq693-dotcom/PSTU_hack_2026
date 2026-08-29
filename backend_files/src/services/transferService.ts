@@ -3,6 +3,7 @@ import { pool, getClient } from '../config/db';
 import { Transaction, TransactionType } from '../types';
 import { Logger } from '../utils/logger';
 import { MemoryCache } from '../utils/cache';
+import { NotificationService } from './notificationService';
 
 export interface ExecuteTransferParams {
   senderId: string;
@@ -453,6 +454,24 @@ export class TransferService {
         senderBalance: `৳${(senderNewBalance / 100).toFixed(2)}`,
         receiverBalance: `৳${(receiverNewBalance / 100).toFixed(2)}`,
       });
+
+      // Dispatch in-app notifications for Receiver and Sender
+      const formattedAmount = (amountPoisha / 100).toLocaleString('en-US', { minimumFractionDigits: 2 });
+      NotificationService.createNotification(
+        resolvedReceiverId,
+        'TRANSFER_RECEIVED',
+        `💰 ৳${formattedAmount} Received`,
+        `You received ৳${formattedAmount} from ${transaction.sender_name || 'a user'}${note ? ` for "${note}"` : ''}.`,
+        txId
+      ).catch(() => {});
+
+      NotificationService.createNotification(
+        senderId,
+        'TRANSFER_SENT',
+        `💸 ৳${formattedAmount} Sent Successfully`,
+        `You sent ৳${formattedAmount} to ${transaction.receiver_name || 'a user'}. Ref: ${refId}`,
+        txId
+      ).catch(() => {});
 
       return {
         transaction,
