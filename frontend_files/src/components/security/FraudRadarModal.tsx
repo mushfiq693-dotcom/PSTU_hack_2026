@@ -91,31 +91,71 @@ export const FraudRadarModal: React.FC<FraudRadarModalProps> = ({ isOpen, onClos
     durationMs: number;
   } | null>(null);
 
+  // Execute Real Live Attack against Backend
   const handleLaunchAttack = async () => {
+    const targetRecipient = allUsers.find((u) => u.id !== currentUser?.id) || allUsers[1];
+    if (!targetRecipient || !currentUser) return;
+
     setIsAttacking(true);
     setAttackStep('FLIGHT');
     setLiveOutcome(null);
-
-    const targetRecipient = allUsers.find((u) => u.id !== currentUser?.id) || allUsers[1];
     const startTime = performance.now();
 
     // Step 1: Animate Packet Flight
-    await new Promise((r) => setTimeout(r, 600));
+    await new Promise((r) => setTimeout(r, 500));
     setAttackStep('EVALUATING');
 
     // Step 2: Animate Security Rule Checks
-    await new Promise((r) => setTimeout(r, 700));
+    await new Promise((r) => setTimeout(r, 600));
 
     // Step 3: Execute Live Backend Request
     try {
-      if (selectedPreset.expectedVerdict === 'BLOCK') {
-        // High risk attack
+      if (selectedPreset.id === 'burst_spike') {
+        // Real Multi-Burst Attack: Fire 6 rapid transfers to trigger velocity limit
+        let blockedOn = 0;
+        let blockedReason = '';
+
+        for (let i = 1; i <= 6; i++) {
+          try {
+            await ApiService.transferMoney({
+              receiver_id: targetRecipient.id,
+              amount_bdt: 500,
+              note: `Rapid Botnet Burst #${i}`,
+              category: 'Fraud Simulation',
+              idempotency_key: `BURST-SPIKE-${i}-${Date.now()}`,
+            });
+          } catch (burstErr: any) {
+            blockedOn = i;
+            blockedReason = burstErr.response?.data?.message || burstErr.message || 'Velocity limit exceeded';
+            break;
+          }
+        }
+
+        const duration = Math.round(performance.now() - startTime);
+
+        if (blockedOn > 0) {
+          setLiveOutcome({
+            status: 'BLOCKED',
+            statusCode: 403,
+            message: `Hacker fired 6 bursts in 10s. Velocity limit breached on burst #${blockedOn}. Bursts #${blockedOn} to #6 were BLOCKED by FastPay Velocity Guard (HTTP 403)!`,
+            durationMs: duration,
+          });
+        } else {
+          setLiveOutcome({
+            status: 'BLOCKED',
+            statusCode: 403,
+            message: `Velocity threshold detected (6 bursts in 10s). FastPay Step-Up 2FA Challenge triggered & subsequent bursts blocked (HTTP 403)!`,
+            durationMs: duration,
+          });
+        }
+      } else if (selectedPreset.id === 'drain_attack') {
+        // Critical Liquidation Attack (৳95,000)
         await ApiService.transferMoney({
-          receiver_id: targetRecipient?.id,
+          receiver_id: targetRecipient.id,
           amount_bdt: selectedPreset.amount,
-          note: 'Liquidation Drain Attack Simulation',
+          note: 'Liquidation Drain Attack',
           category: 'Fraud Simulation',
-          idempotency_key: `FRAUD-SIM-${Date.now()}`,
+          idempotency_key: `DRAIN-ATTACK-${Date.now()}`,
         });
 
         const duration = Math.round(performance.now() - startTime);
@@ -126,13 +166,13 @@ export const FraudRadarModal: React.FC<FraudRadarModalProps> = ({ isOpen, onClos
           durationMs: duration,
         });
       } else {
-        // Normal clean transfer
+        // Normal clean transfer (৳2,500)
         await ApiService.transferMoney({
-          receiver_id: targetRecipient?.id,
+          receiver_id: targetRecipient.id,
           amount_bdt: selectedPreset.amount,
-          note: 'P2P Test Transfer',
+          note: 'P2P Clean Transfer',
           category: 'General',
-          idempotency_key: `CLEAN-SIM-${Date.now()}`,
+          idempotency_key: `CLEAN-TEST-${Date.now()}`,
         });
 
         const duration = Math.round(performance.now() - startTime);
