@@ -167,3 +167,19 @@ CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(is_read);
 CREATE INDEX IF NOT EXISTS idx_bill_splits_creator ON bill_splits(creator_id);
 CREATE INDEX IF NOT EXISTS idx_bill_split_items_split ON bill_split_items(bill_split_id);
 CREATE INDEX IF NOT EXISTS idx_bill_split_items_user ON bill_split_items(user_id);
+
+-- ==============================================================================
+-- Row Level Security (RLS) - Secures Supabase Data API from Direct Public Access
+-- ==============================================================================
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wallets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ledger_entries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE idempotency_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE money_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE connections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bill_splits ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bill_split_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE phone_verifications ENABLE ROW LEVEL SECURITY;
+
