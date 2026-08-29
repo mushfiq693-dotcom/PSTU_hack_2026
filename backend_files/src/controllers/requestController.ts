@@ -1,6 +1,7 @@
 import { Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from '../middlewares/auth';
 import { RequestService } from '../services/requestService';
+import { Logger } from '../utils/logger';
 
 export class RequestController {
   /**
@@ -8,11 +9,13 @@ export class RequestController {
    * Create a new money request in PostgreSQL with optional borrow due date
    */
   public static async create(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    const requestId = req.requestId;
     try {
       const requesterId = req.user!.id;
       const { payer_id, payer_phone, amount_bdt, note, due_date } = req.body;
 
       if (!amount_bdt || typeof amount_bdt !== 'number' || amount_bdt <= 0) {
+        (res as any).locals.errorCode = 'INVALID_AMOUNT';
         res.status(400).json({
           success: false,
           error_code: 'INVALID_AMOUNT',
@@ -28,7 +31,8 @@ export class RequestController {
         payerPhone: payer_phone,
         amountPoisha,
         note,
-        dueDate: due_date
+        dueDate: due_date,
+        requestId,
       });
 
       res.status(201).json({
@@ -37,9 +41,13 @@ export class RequestController {
         data: request
       });
     } catch (err: any) {
-      res.status(err.statusCode || 500).json({
+      const statusCode = err.statusCode || 500;
+      const errorCode = err.errorCode || 'REQUEST_CREATE_ERROR';
+      (res as any).locals.errorCode = errorCode;
+
+      res.status(statusCode).json({
         success: false,
-        error_code: err.errorCode || 'REQUEST_CREATE_ERROR',
+        error_code: errorCode,
         message: err.message
       });
     }
@@ -50,6 +58,7 @@ export class RequestController {
    * List money requests (incoming, outgoing, or all) with computed overdue statuses
    */
   public static async list(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    const requestId = req.requestId;
     try {
       const userId = req.user!.id;
       const filter = (req.query.filter as 'incoming' | 'outgoing' | 'all') || 'all';
@@ -60,6 +69,7 @@ export class RequestController {
         data: requests
       });
     } catch (err: any) {
+      (res as any).locals.errorCode = 'REQUEST_LIST_ERROR';
       res.status(500).json({
         success: false,
         error_code: 'REQUEST_LIST_ERROR',
@@ -73,12 +83,13 @@ export class RequestController {
    * Accept and settle money request via TransferService
    */
   public static async accept(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    const requestId = req.requestId;
     try {
       const payerId = req.user!.id;
-      const requestId = req.params.id;
+      const moneyRequestId = req.params.id;
       const idempotencyKey = (req.headers['idempotency-key'] || req.headers['x-idempotency-key']) as string | undefined;
 
-      const result = await RequestService.acceptRequest(requestId, payerId, idempotencyKey);
+      const result = await RequestService.acceptRequest(moneyRequestId, payerId, idempotencyKey, requestId);
 
       res.status(200).json({
         success: true,
@@ -86,9 +97,13 @@ export class RequestController {
         data: result
       });
     } catch (err: any) {
-      res.status(err.statusCode || 500).json({
+      const statusCode = err.statusCode || 500;
+      const errorCode = err.errorCode || 'REQUEST_ACCEPT_ERROR';
+      (res as any).locals.errorCode = errorCode;
+
+      res.status(statusCode).json({
         success: false,
-        error_code: err.errorCode || 'REQUEST_ACCEPT_ERROR',
+        error_code: errorCode,
         message: err.message
       });
     }
@@ -99,11 +114,12 @@ export class RequestController {
    * Reject money request
    */
   public static async reject(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    const requestId = req.requestId;
     try {
       const payerId = req.user!.id;
-      const requestId = req.params.id;
+      const moneyRequestId = req.params.id;
 
-      const updatedRequest = await RequestService.rejectRequest(requestId, payerId);
+      const updatedRequest = await RequestService.rejectRequest(moneyRequestId, payerId, requestId);
 
       res.status(200).json({
         success: true,
@@ -111,9 +127,13 @@ export class RequestController {
         data: updatedRequest
       });
     } catch (err: any) {
-      res.status(err.statusCode || 500).json({
+      const statusCode = err.statusCode || 500;
+      const errorCode = err.errorCode || 'REQUEST_REJECT_ERROR';
+      (res as any).locals.errorCode = errorCode;
+
+      res.status(statusCode).json({
         success: false,
-        error_code: err.errorCode || 'REQUEST_REJECT_ERROR',
+        error_code: errorCode,
         message: err.message
       });
     }
@@ -124,11 +144,12 @@ export class RequestController {
    * Cancel outgoing money request
    */
   public static async cancel(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    const requestId = req.requestId;
     try {
       const requesterId = req.user!.id;
-      const requestId = req.params.id;
+      const moneyRequestId = req.params.id;
 
-      const updatedRequest = await RequestService.cancelRequest(requestId, requesterId);
+      const updatedRequest = await RequestService.cancelRequest(moneyRequestId, requesterId, requestId);
 
       res.status(200).json({
         success: true,
@@ -136,9 +157,13 @@ export class RequestController {
         data: updatedRequest
       });
     } catch (err: any) {
-      res.status(err.statusCode || 500).json({
+      const statusCode = err.statusCode || 500;
+      const errorCode = err.errorCode || 'REQUEST_CANCEL_ERROR';
+      (res as any).locals.errorCode = errorCode;
+
+      res.status(statusCode).json({
         success: false,
-        error_code: err.errorCode || 'REQUEST_CANCEL_ERROR',
+        error_code: errorCode,
         message: err.message
       });
     }

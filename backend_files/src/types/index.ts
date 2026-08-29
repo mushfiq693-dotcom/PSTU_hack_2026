@@ -12,9 +12,32 @@ export interface User {
   id: string;
   name: string;
   phone: string;
-  email: string;
-  avatar: string;
+  email?: string;
+  avatar?: string;
+  password_hash?: string;
+  phone_verified: boolean;
   pin?: string;
+  created_at: string;
+}
+
+export interface SafeUser {
+  id: string;
+  name: string;
+  phone: string;
+  email?: string;
+  avatar?: string;
+  phone_verified: boolean;
+  created_at: string;
+}
+
+export interface PhoneVerification {
+  id: string;
+  user_id: string;
+  phone: string;
+  otp_hash: string;
+  expires_at: string;
+  attempts: number;
+  verified_at: string | null;
   created_at: string;
 }
 
@@ -27,7 +50,7 @@ export interface Wallet {
   updated_at: string;
 }
 
-export interface UserWithWallet extends User {
+export interface UserWithWallet extends SafeUser {
   wallet_id: string;
   balance: number;
   currency: string;
@@ -137,6 +160,37 @@ export interface BillSplit {
   creator_name?: string;
   creator_phone?: string;
   participants: BillSplitItem[];
+}
+
+export interface RegisterDto {
+  name: string;
+  phone: string;
+  password: string;
+  email?: string;
+}
+
+export interface VerifyOtpDto {
+  phone: string;
+  otp: string;
+}
+
+export interface ResendOtpDto {
+  phone: string;
+}
+
+export interface LoginDto {
+  phone: string;
+  password: string;
+}
+
+export interface AuthResponse {
+  success: boolean;
+  message: string;
+  token?: string;
+  user?: SafeUser;
+  phone?: string;
+  phone_verified?: boolean;
+  dev_otp?: string;
 }
 
 export interface TransferRequestDto {

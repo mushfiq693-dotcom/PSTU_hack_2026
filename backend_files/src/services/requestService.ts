@@ -2,6 +2,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { pool } from '../config/db';
 import { MoneyRequest, RequestStatus } from '../types';
 import { TransferService, TransferResult } from './transferService';
+import { Logger } from '../utils/logger';
+import { MemoryCache } from '../utils/cache';
 
 export interface CreateRequestParams {
   requesterId: string;
@@ -10,6 +12,7 @@ export interface CreateRequestParams {
   amountPoisha: number;
   note?: string;
   dueDate?: string;
+  requestId?: string;
 }
 
 export class RequestService {
@@ -34,9 +37,14 @@ export class RequestService {
    * Create a new P2P Money Request in PostgreSQL with optional Due Date and Notification
    */
   public static async createRequest(params: CreateRequestParams): Promise<MoneyRequest> {
-    const { requesterId, payerId: initialPayerId, payerPhone, amountPoisha, note, dueDate } = params;
+    const { requesterId, payerId: initialPayerId, payerPhone, amountPoisha, note, dueDate, requestId: httpReqId } = params;
 
     if (!amountPoisha || amountPoisha <= 0 || !Number.isInteger(amountPoisha)) {
+      Logger.warn('REQUEST', 'VALIDATION_FAILED', 'Invalid money request amount', {
+        requestId: httpReqId,
+        amountPoisha,
+        errorCode: 'INVALID_AMOUNT',
+      });
       const error: any = new Error('Request amount must be a positive integer in Poisha.');
       error.statusCode = 400;
       error.errorCode = 'INVALID_AMOUNT';
@@ -47,6 +55,11 @@ export class RequestService {
     if (!resolvedPayerId && payerPhone) {
       const payerUser = await pool.query('SELECT id FROM users WHERE phone = $1', [payerPhone]);
       if (payerUser.rows.length === 0) {
+        Logger.warn('REQUEST', 'PAYER_NOT_FOUND', `User with phone '${payerPhone}' not found`, {
+          requestId: httpReqId,
+          payerPhone,
+          errorCode: 'PAYER_NOT_FOUND',
+        });
         const error: any = new Error(`User with phone '${payerPhone}' not found.`);
         error.statusCode = 404;
         error.errorCode = 'PAYER_NOT_FOUND';
@@ -69,13 +82,13 @@ export class RequestService {
       throw error;
     }
 
-    const requestId = uuidv4();
+    const moneyRequestId = uuidv4();
     const formattedDueDate = dueDate ? new Date(dueDate).toISOString() : null;
 
     await pool.query(
       `INSERT INTO money_requests (id, requester_id, payer_id, amount, note, due_date, status, created_at)
        VALUES ($1, $2, $3, $4, $5, $6, 'PENDING', CURRENT_TIMESTAMP)`,
-      [requestId, requesterId, resolvedPayerId, amountPoisha, note || null, formattedDueDate]
+      [moneyRequestId, requesterId, resolvedPayerId, amountPoisha, note || null, formattedDueDate]
     );
 
     // Fetch requester name for notification
@@ -91,13 +104,22 @@ export class RequestService {
       [
         notifId,
         resolvedPayerId,
-        requestId,
+        moneyRequestId,
         `Money Request from ${requesterName}`,
         `${requesterName} requested ৳${amountBdt}${note ? ` for "${note}"` : ''}.${formattedDueDate ? ` Settle by ${new Date(formattedDueDate).toLocaleDateString()}.` : ''}`
       ]
     );
 
-    const request = await this.getRequestById(requestId);
+    Logger.info('REQUEST', 'CREATED', '', {
+      requestId: httpReqId,
+      moneyRequestId,
+      requester: requesterId,
+      payer: resolvedPayerId,
+      amountPoisha,
+      amountBdt: `৳${(amountPoisha / 100).toFixed(2)}`,
+    });
+
+    const request = await this.getRequestById(moneyRequestId);
     return request!;
   }
 
@@ -174,13 +196,19 @@ export class RequestService {
    * Routes money movement through the central TransferService!
    */
   public static async acceptRequest(
-    requestId: string,
+    moneyRequestId: string,
     payerId: string,
-    idempotencyKey?: string
+    idempotencyKey?: string,
+    httpReqId?: string
   ): Promise<{ request: MoneyRequest; transfer: TransferResult }> {
-    const request = await this.getRequestById(requestId);
+    const request = await this.getRequestById(moneyRequestId);
 
     if (!request) {
+      Logger.warn('REQUEST', 'NOT_FOUND', 'Money request not found', {
+        requestId: httpReqId,
+        moneyRequestId,
+        errorCode: 'REQUEST_NOT_FOUND',
+      });
       const error: any = new Error('Money request not found.');
       error.statusCode = 404;
       error.errorCode = 'REQUEST_NOT_FOUND';
@@ -188,6 +216,13 @@ export class RequestService {
     }
 
     if (request.payer_id !== payerId) {
+      Logger.warn('REQUEST', 'FORBIDDEN', 'Unauthorized attempt to accept request', {
+        requestId: httpReqId,
+        moneyRequestId,
+        payerId,
+        actualPayer: request.payer_id,
+        errorCode: 'FORBIDDEN_ACTION',
+      });
       const error: any = new Error('Only the designated payer can accept this money request.');
       error.statusCode = 403;
       error.errorCode = 'FORBIDDEN_ACTION';
@@ -201,6 +236,14 @@ export class RequestService {
       throw error;
     }
 
+    Logger.info('REQUEST', 'ACCEPTING', 'Settling money request through Transfer Engine', {
+      requestId: httpReqId,
+      moneyRequestId,
+      payerId,
+      requesterId: request.requester_id,
+      amountPoisha: request.amount,
+    });
+
     // 1. Execute Fund Transfer using Central Transfer Engine (Row-level locked & atomic)
     const transferResult = await TransferService.executeTransfer({
       senderId: payerId,
@@ -209,7 +252,8 @@ export class RequestService {
       note: `Request Settlement: ${request.note || 'P2P Payment'}`,
       category: 'Request Settlement',
       type: 'REQUEST_SETTLEMENT',
-      idempotencyKey
+      idempotencyKey,
+      requestId: httpReqId,
     });
 
     // 2. Mark request as ACCEPTED and link transaction ID
@@ -217,10 +261,18 @@ export class RequestService {
       `UPDATE money_requests 
        SET status = 'ACCEPTED', transaction_id = $1, resolved_at = CURRENT_TIMESTAMP 
        WHERE id = $2`,
-      [transferResult.transaction.id, requestId]
+      [transferResult.transaction.id, moneyRequestId]
     );
 
-    const updatedRequest = (await this.getRequestById(requestId))!;
+    const updatedRequest = (await this.getRequestById(moneyRequestId))!;
+    MemoryCache.clear();
+
+    Logger.info('REQUEST', 'ACCEPTED', 'Money request settled successfully', {
+      requestId: httpReqId,
+      moneyRequestId,
+      transactionId: transferResult.transaction.id,
+      referenceId: transferResult.transaction.reference_id,
+    });
 
     return {
       request: updatedRequest,
@@ -231,8 +283,12 @@ export class RequestService {
   /**
    * Reject a Money Request
    */
-  public static async rejectRequest(requestId: string, payerId: string): Promise<MoneyRequest> {
-    const request = await this.getRequestById(requestId);
+  public static async rejectRequest(
+    moneyRequestId: string,
+    payerId: string,
+    httpReqId?: string
+  ): Promise<MoneyRequest> {
+    const request = await this.getRequestById(moneyRequestId);
 
     if (!request) {
       const error: any = new Error('Money request not found.');
@@ -259,17 +315,27 @@ export class RequestService {
       `UPDATE money_requests 
        SET status = 'REJECTED', resolved_at = CURRENT_TIMESTAMP 
        WHERE id = $1`,
-      [requestId]
+      [moneyRequestId]
     );
 
-    return (await this.getRequestById(requestId))!;
+    Logger.info('REQUEST', 'REJECTED', 'Money request declined by payer', {
+      requestId: httpReqId,
+      moneyRequestId,
+      payerId,
+    });
+
+    return (await this.getRequestById(moneyRequestId))!;
   }
 
   /**
    * Cancel an Outgoing Money Request
    */
-  public static async cancelRequest(requestId: string, requesterId: string): Promise<MoneyRequest> {
-    const request = await this.getRequestById(requestId);
+  public static async cancelRequest(
+    moneyRequestId: string,
+    requesterId: string,
+    httpReqId?: string
+  ): Promise<MoneyRequest> {
+    const request = await this.getRequestById(moneyRequestId);
 
     if (!request) {
       const error: any = new Error('Money request not found.');
@@ -296,9 +362,15 @@ export class RequestService {
       `UPDATE money_requests 
        SET status = 'CANCELLED', resolved_at = CURRENT_TIMESTAMP 
        WHERE id = $1`,
-      [requestId]
+      [moneyRequestId]
     );
 
-    return (await this.getRequestById(requestId))!;
+    Logger.info('REQUEST', 'CANCELLED', 'Money request cancelled by requester', {
+      requestId: httpReqId,
+      moneyRequestId,
+      requesterId,
+    });
+
+    return (await this.getRequestById(moneyRequestId))!;
   }
 }

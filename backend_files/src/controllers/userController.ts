@@ -15,6 +15,7 @@ export class UserController {
         data: users
       });
     } catch (err: any) {
+      (res as any).locals.errorCode = 'USER_FETCH_ERROR';
       res.status(500).json({
         success: false,
         error_code: 'USER_FETCH_ERROR',
@@ -33,6 +34,7 @@ export class UserController {
       const profile = await UserService.getUserById(userId);
 
       if (!profile) {
+        (res as any).locals.errorCode = 'USER_NOT_FOUND';
         res.status(404).json({
           success: false,
           error_code: 'USER_NOT_FOUND',
@@ -46,6 +48,7 @@ export class UserController {
         data: profile
       });
     } catch (err: any) {
+      (res as any).locals.errorCode = 'WALLET_FETCH_ERROR';
       res.status(500).json({
         success: false,
         error_code: 'WALLET_FETCH_ERROR',
@@ -66,6 +69,7 @@ export class UserController {
         message: 'Demo dataset reset to initial state with ৳100,000 per user in PostgreSQL.'
       });
     } catch (err: any) {
+      (res as any).locals.errorCode = 'RESET_FAILED';
       res.status(500).json({
         success: false,
         error_code: 'RESET_FAILED',

@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { StressService } from '../services/stressService';
+import { Logger } from '../utils/logger';
 
 export class StressController {
   /**
@@ -7,6 +8,7 @@ export class StressController {
    * Executes concurrent transfer stress test
    */
   public static async runStressTest(req: Request, res: Response, next: NextFunction): Promise<void> {
+    const requestId = req.requestId;
     try {
       const {
         sender_id = 'usr_shakib_01',
@@ -17,6 +19,7 @@ export class StressController {
       } = req.body;
 
       if (total_requests < 1 || total_requests > 100) {
+        (res as any).locals.errorCode = 'INVALID_PARAM';
         res.status(400).json({
           success: false,
           error_code: 'INVALID_PARAM',
@@ -26,6 +29,7 @@ export class StressController {
       }
 
       if (amount_per_request_bdt <= 0) {
+        (res as any).locals.errorCode = 'INVALID_PARAM';
         res.status(400).json({
           success: false,
           error_code: 'INVALID_PARAM',
@@ -39,7 +43,8 @@ export class StressController {
         receiverId: receiver_id,
         totalRequests: Number(total_requests),
         amountPerRequestBdt: Number(amount_per_request_bdt),
-        startingBalanceBdt: starting_balance_bdt ? Number(starting_balance_bdt) : undefined
+        startingBalanceBdt: starting_balance_bdt ? Number(starting_balance_bdt) : undefined,
+        requestId,
       });
 
       res.status(200).json({
@@ -48,6 +53,12 @@ export class StressController {
         data: result
       });
     } catch (err: any) {
+      (res as any).locals.errorCode = 'STRESS_TEST_ERROR';
+      Logger.error('CONCURRENCY', 'TEST_FAILED', err.message, {
+        requestId,
+        error: err.message,
+      }, err);
+
       res.status(500).json({
         success: false,
         error_code: 'STRESS_TEST_ERROR',

@@ -1,5 +1,6 @@
 import { pool } from '../config/db';
 import { LedgerAuditResult, LedgerEntry } from '../types';
+import { Logger } from '../utils/logger';
 
 export class LedgerService {
   /**
@@ -57,6 +58,8 @@ export class LedgerService {
    * Checks the fundamental financial invariant: SUM(Debits) - SUM(Credits) === 0
    */
   public static async verifySystemAudit(): Promise<LedgerAuditResult> {
+    const auditStart = Date.now();
+
     const debitRes = await pool.query(`
       SELECT COALESCE(SUM(amount), 0) as total_debit, COUNT(*) as count 
       FROM ledger_entries 
@@ -84,6 +87,16 @@ export class LedgerService {
     const totalLedgerEntries = parseInt(debitRes.rows[0].count, 10) + parseInt(creditRes.rows[0].count, 10);
 
     const isBalanced = discrepancyPoisha === 0;
+    const durationMs = Date.now() - auditStart;
+
+    Logger.info('LEDGER', 'AUDIT_CHECK', '', {
+      isBalanced: isBalanced ? 'YES' : 'NO',
+      discrepancyBdt: discrepancyPoisha / 100,
+      totalDebitsBdt: totalDebitPoisha / 100,
+      totalCreditsBdt: totalCreditPoisha / 100,
+      totalEntries: totalLedgerEntries,
+      duration: `${durationMs}ms`,
+    });
 
     return {
       total_debit_poisha: totalDebitPoisha,

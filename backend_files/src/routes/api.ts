@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middlewares/auth';
 import { idempotencyMiddleware } from '../middlewares/idempotency';
+import { AuthController } from '../controllers/authController';
 import { TransferController } from '../controllers/transferController';
 import { RequestController } from '../controllers/requestController';
 import { LedgerController } from '../controllers/ledgerController';
@@ -11,6 +12,16 @@ import { NotificationController } from '../controllers/notificationController';
 import { SplitController } from '../controllers/splitController';
 
 export const apiRouter = Router();
+
+// ==========================================
+// Authentication & Phone Verification Endpoints
+// ==========================================
+apiRouter.post('/auth/register', AuthController.register);
+apiRouter.post('/auth/verify-otp', AuthController.verifyOtp);
+apiRouter.post('/auth/resend-otp', AuthController.resendOtp);
+apiRouter.post('/auth/login', AuthController.login);
+apiRouter.post('/auth/logout', AuthController.logout);
+apiRouter.get('/auth/me', authMiddleware, AuthController.me);
 
 // ==========================================
 // User & Wallet Endpoints

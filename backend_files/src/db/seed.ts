@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
+import bcrypt from 'bcryptjs';
 import { pool, getClient } from '../config/db';
 import { initializeDatabase } from './init';
 
@@ -55,6 +56,7 @@ export const SEED_USERS: SeedUser[] = [
 ];
 
 export const INITIAL_BALANCE_POISHA = 100000 * 100; // 100,000 BDT = 10,000,000 Poisha
+const DEFAULT_PASSWORD_HASH = bcrypt.hashSync('Password123!', 10);
 
 export async function seedDatabase(): Promise<void> {
   await initializeDatabase();
@@ -70,6 +72,7 @@ export async function seedDatabase(): Promise<void> {
     await client.query('DELETE FROM notifications');
     await client.query('DELETE FROM connections');
     await client.query('DELETE FROM idempotency_records');
+    await client.query('DELETE FROM phone_verifications');
     await client.query('DELETE FROM money_requests');
     await client.query('DELETE FROM ledger_entries');
     await client.query('DELETE FROM transactions');
@@ -83,14 +86,15 @@ export async function seedDatabase(): Promise<void> {
     const systemWalletId = 'wlt_system_treasury';
 
     await client.query(
-      `INSERT INTO users (id, name, phone, email, avatar, pin)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+      `INSERT INTO users (id, name, phone, email, avatar, password_hash, phone_verified, pin)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE, $7)`,
       [
         systemUserId,
         'NexusPay System Treasury',
         '01000000000',
         'treasury@nexuspay.com',
         'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150',
+        DEFAULT_PASSWORD_HASH,
         '9999'
       ]
     );
@@ -101,38 +105,36 @@ export async function seedDatabase(): Promise<void> {
       [systemWalletId, systemUserId]
     );
 
-    // 2. Insert Demo Users and Wallets
-    for (const user of SEED_USERS) {
+    // 2. Seed 5 demo users with INITIAL_BALANCE_POISHA each
+    for (const u of SEED_USERS) {
+      const walletId = `wlt_${u.id.replace('usr_', '')}`;
+
       await client.query(
-        `INSERT INTO users (id, name, phone, email, avatar, pin)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [user.id, user.name, user.phone, user.email, user.avatar, user.pin]
+        `INSERT INTO users (id, name, phone, email, avatar, password_hash, phone_verified, pin)
+         VALUES ($1, $2, $3, $4, $5, $6, TRUE, $7)`,
+        [u.id, u.name, u.phone, u.email, u.avatar, DEFAULT_PASSWORD_HASH, u.pin]
       );
 
-      const walletId = `wlt_${user.id.replace('usr_', '')}`;
       await client.query(
         `INSERT INTO wallets (id, user_id, currency, balance, status)
          VALUES ($1, $2, 'BDT', $3, 'ACTIVE')`,
-        [walletId, user.id, INITIAL_BALANCE_POISHA]
+        [walletId, u.id, INITIAL_BALANCE_POISHA]
       );
 
-      // Create Initial Seed Funding Transaction (Double-entry)
+      // Record Genesis Funding in Double-Entry Ledger (ACID invariant)
       const txId = uuidv4();
-      const refId = `GENESIS-${user.id.toUpperCase()}`;
       await client.query(
         `INSERT INTO transactions (id, reference_id, sender_wallet_id, receiver_wallet_id, type, amount, fee, note, category, status)
-         VALUES ($1, $2, $3, $4, 'SEED_FUNDING', $5, 0, 'Hackathon Demo Auto-Funding BDT 100,000', 'Genesis', 'SUCCESS')`,
-        [txId, refId, systemWalletId, walletId, INITIAL_BALANCE_POISHA]
+         VALUES ($1, $2, $3, $4, 'SEED_FUNDING', $5, 0, 'Initial Genesis Allocation', 'Genesis', 'SUCCESS')`,
+        [txId, `GEN-${u.id}-${Date.now()}`, systemWalletId, walletId, INITIAL_BALANCE_POISHA]
       );
 
-      // Ledger Debit (Treasury)
       await client.query(
         `INSERT INTO ledger_entries (id, transaction_id, wallet_id, entry_type, amount, balance_after)
          VALUES ($1, $2, $3, 'DEBIT', $4, 0)`,
         [uuidv4(), txId, systemWalletId, INITIAL_BALANCE_POISHA]
       );
 
-      // Ledger Credit (User Wallet)
       await client.query(
         `INSERT INTO ledger_entries (id, transaction_id, wallet_id, entry_type, amount, balance_after)
          VALUES ($1, $2, $3, 'CREDIT', $4, $5)`,
@@ -140,7 +142,8 @@ export async function seedDatabase(): Promise<void> {
       );
     }
 
-    // 3. Seed Realistic Sample Peer-to-Peer Transactions
+    // 3. Seed Realistic Historical Transactions
+    // Sample Transfer 1: Shakib -> Tanmoy (BDT 2,500)
     const tx1Amount = 250000;
     const tx1Id = uuidv4();
     const shakibWallet = 'wlt_shakib_01';
@@ -168,7 +171,6 @@ export async function seedDatabase(): Promise<void> {
     );
 
     // 4. Seed Connections (Friends & Family)
-    // Shakib is friends with Tanmoy & Rahim, and family with Sadia & Mehraj
     await client.query(
       `INSERT INTO connections (id, user_id, connected_user_id, relation_type, status)
        VALUES 

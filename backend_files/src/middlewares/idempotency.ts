@@ -1,6 +1,7 @@
 import { Response, NextFunction } from 'express';
 import { pool } from '../config/db';
 import { AuthenticatedRequest } from './auth';
+import { Logger } from '../utils/logger';
 
 export async function idempotencyMiddleware(
   req: AuthenticatedRequest,
@@ -21,8 +22,15 @@ export async function idempotencyMiddleware(
   }
 
   const userId = req.user?.id || 'anonymous';
+  const requestId = req.requestId;
 
   try {
+    Logger.debug('IDEMPOTENCY', 'CHECK', '', {
+      requestId,
+      key: idempotencyKey,
+      userId,
+    });
+
     // 1. Check if this key was already processed
     const existingRes = await pool.query(
       `SELECT key, user_id, status_code, response_body, created_at 
@@ -33,11 +41,25 @@ export async function idempotencyMiddleware(
 
     if (existingRes.rows.length > 0) {
       const existingRecord = existingRes.rows[0];
+
+      Logger.info('IDEMPOTENCY', 'CACHE_HIT', 'Replaying cached idempotent response', {
+        requestId,
+        key: idempotencyKey,
+        userId,
+        replayedStatus: existingRecord.status_code,
+      });
+
       res.setHeader('X-Idempotent-Replay', 'true');
       res.setHeader('X-Idempotency-Key', idempotencyKey);
       res.status(existingRecord.status_code).json(JSON.parse(existingRecord.response_body));
       return;
     }
+
+    Logger.debug('IDEMPOTENCY', 'CACHE_MISS', '', {
+      requestId,
+      key: idempotencyKey,
+      userId,
+    });
 
     // 2. Intercept response to store upon successful completion
     const originalJson = res.json.bind(res);
@@ -50,8 +72,18 @@ export async function idempotencyMiddleware(
            VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
            ON CONFLICT (key) DO UPDATE SET response_body = EXCLUDED.response_body`,
           [idempotencyKey, userId, statusCode, JSON.stringify(body)]
-        ).catch((err) => {
-          console.error('Failed to cache idempotency record:', err);
+        ).then(() => {
+          Logger.debug('IDEMPOTENCY', 'STORE_RECORD', '', {
+            requestId,
+            key: idempotencyKey,
+            statusCode,
+          });
+        }).catch((err) => {
+          Logger.error('IDEMPOTENCY', 'STORE_ERROR', 'Failed to cache idempotency record', {
+            requestId,
+            key: idempotencyKey,
+            error: err.message,
+          }, err);
         });
       }
 
@@ -60,7 +92,12 @@ export async function idempotencyMiddleware(
     };
 
     next();
-  } catch (err) {
+  } catch (err: any) {
+    Logger.error('IDEMPOTENCY', 'ERROR', 'Idempotency lookup error', {
+      requestId,
+      key: idempotencyKey,
+      error: err.message,
+    }, err);
     next(err);
   }
 }

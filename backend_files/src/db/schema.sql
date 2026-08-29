@@ -1,5 +1,5 @@
 -- ==============================================================================
--- NexusPay Engine: Normalized Relational Database Schema (PostgreSQL Engine)
+-- FastPay Engine: Normalized Relational Database Schema (PostgreSQL Engine)
 -- High Concurrency, ACID Double-Entry Ledger, Idempotency & Money Movement
 -- Amounts are strictly stored as integer POISHA (1 BDT = 100 Poisha) in BIGINT
 -- ==============================================================================
@@ -9,13 +9,32 @@ CREATE TABLE IF NOT EXISTS users (
     id VARCHAR(64) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     phone VARCHAR(32) UNIQUE NOT NULL,
-    email VARCHAR(255) UNIQUE NOT NULL,
+    email VARCHAR(255) UNIQUE,
     avatar TEXT,
+    password_hash VARCHAR(255),
+    phone_verified BOOLEAN NOT NULL DEFAULT FALSE,
     pin VARCHAR(64) NOT NULL DEFAULT '1234',
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
--- 2. Wallets Table (One wallet per user with strict non-negative balance constraint)
+-- Idempotent column additions for existing installations
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE users ALTER COLUMN email DROP NOT NULL;
+
+-- 2. Phone Verifications Table (OTP Lifecycle & Security)
+CREATE TABLE IF NOT EXISTS phone_verifications (
+    id VARCHAR(64) PRIMARY KEY,
+    user_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    phone VARCHAR(32) NOT NULL,
+    otp_hash VARCHAR(255) NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    verified_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 3. Wallets Table (One wallet per user with strict non-negative balance constraint)
 CREATE TABLE IF NOT EXISTS wallets (
     id VARCHAR(64) PRIMARY KEY,
     user_id VARCHAR(64) UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -25,7 +44,7 @@ CREATE TABLE IF NOT EXISTS wallets (
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
--- 3. Transactions Table (High-level business movement record)
+-- 4. Transactions Table (High-level business movement record)
 CREATE TABLE IF NOT EXISTS transactions (
     id VARCHAR(64) PRIMARY KEY,
     reference_id VARCHAR(64) UNIQUE NOT NULL,
@@ -41,7 +60,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
--- 4. Ledger Entries Table (Immutable Double-Entry Bookkeeping)
+-- 5. Ledger Entries Table (Immutable Double-Entry Bookkeeping)
 -- Invariant: Every transaction MUST have matched DEBIT and CREDIT entries with identical amounts
 CREATE TABLE IF NOT EXISTS ledger_entries (
     id VARCHAR(64) PRIMARY KEY,
@@ -53,7 +72,7 @@ CREATE TABLE IF NOT EXISTS ledger_entries (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
--- 5. Money Requests Table (P2P Invoices, Borrowing & Due Dates)
+-- 6. Money Requests Table (P2P Invoices, Borrowing & Due Dates)
 CREATE TABLE IF NOT EXISTS money_requests (
     id VARCHAR(64) PRIMARY KEY,
     requester_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -67,7 +86,7 @@ CREATE TABLE IF NOT EXISTS money_requests (
     resolved_at TIMESTAMPTZ
 );
 
--- 6. Connections Table (Friends & Family)
+-- 7. Connections Table (Friends & Family)
 CREATE TABLE IF NOT EXISTS connections (
     id VARCHAR(64) PRIMARY KEY,
     user_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -78,7 +97,7 @@ CREATE TABLE IF NOT EXISTS connections (
     CONSTRAINT unique_connection_pair UNIQUE (user_id, connected_user_id)
 );
 
--- 7. Notifications Table (In-App Push & Debt Reminders)
+-- 8. Notifications Table (In-App Push & Debt Reminders)
 CREATE TABLE IF NOT EXISTS notifications (
     id VARCHAR(64) PRIMARY KEY,
     user_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -90,7 +109,7 @@ CREATE TABLE IF NOT EXISTS notifications (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
--- 8. Bill Splits Table (Multi-party Shared Expenses)
+-- 9. Bill Splits Table (Multi-party Shared Expenses)
 CREATE TABLE IF NOT EXISTS bill_splits (
     id VARCHAR(64) PRIMARY KEY,
     creator_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -101,7 +120,7 @@ CREATE TABLE IF NOT EXISTS bill_splits (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
--- 9. Bill Split Items Table (Individual Participant Shares)
+-- 10. Bill Split Items Table (Individual Participant Shares)
 CREATE TABLE IF NOT EXISTS bill_split_items (
     id VARCHAR(64) PRIMARY KEY,
     bill_split_id VARCHAR(64) NOT NULL REFERENCES bill_splits(id) ON DELETE CASCADE,
@@ -113,7 +132,7 @@ CREATE TABLE IF NOT EXISTS bill_split_items (
     CONSTRAINT unique_bill_participant UNIQUE (bill_split_id, user_id)
 );
 
--- 10. Idempotency Records Table (Prevents duplicate requests / double debits)
+-- 11. Idempotency Records Table (Prevents duplicate requests / double debits)
 CREATE TABLE IF NOT EXISTS idempotency_records (
     key VARCHAR(128) PRIMARY KEY,
     user_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -125,6 +144,9 @@ CREATE TABLE IF NOT EXISTS idempotency_records (
 -- ==============================================================================
 -- Performance Indices
 -- ==============================================================================
+CREATE INDEX IF NOT EXISTS idx_phone_verifications_phone ON phone_verifications(phone);
+CREATE INDEX IF NOT EXISTS idx_phone_verifications_user_id ON phone_verifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_phone_verifications_created_at ON phone_verifications(created_at);
 CREATE INDEX IF NOT EXISTS idx_wallets_user_id ON wallets(user_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_sender ON transactions(sender_wallet_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_receiver ON transactions(receiver_wallet_id);

@@ -24,6 +24,7 @@ export class LedgerController {
         }
       });
     } catch (err: any) {
+      (res as any).locals.errorCode = 'LEDGER_FETCH_ERROR';
       res.status(500).json({
         success: false,
         error_code: 'LEDGER_FETCH_ERROR',
@@ -45,6 +46,7 @@ export class LedgerController {
         data: auditResult
       });
     } catch (err: any) {
+      (res as any).locals.errorCode = 'AUDIT_EXECUTION_ERROR';
       res.status(500).json({
         success: false,
         error_code: 'AUDIT_EXECUTION_ERROR',

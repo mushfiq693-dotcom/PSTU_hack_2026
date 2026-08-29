@@ -2,6 +2,7 @@ import { pool } from '../config/db';
 import { StressTestResult } from '../types';
 import { TransferService } from './transferService';
 import { LedgerService } from './ledgerService';
+import { Logger } from '../utils/logger';
 
 export interface RunStressTestOptions {
   senderId: string;
@@ -9,6 +10,7 @@ export interface RunStressTestOptions {
   totalRequests: number;
   amountPerRequestBdt: number;
   startingBalanceBdt?: number;
+  requestId?: string;
 }
 
 export class StressService {
@@ -23,17 +25,32 @@ export class StressService {
       receiverId,
       totalRequests = 20,
       amountPerRequestBdt = 500,
-      startingBalanceBdt = 1000
+      startingBalanceBdt = 1000,
+      requestId
     } = options;
 
     const amountPoisha = Math.round(amountPerRequestBdt * 100);
     const targetStartingBalancePoisha = Math.round(startingBalanceBdt * 100);
+
+    Logger.info('CONCURRENCY', 'TEST_START', 'Launching parallel concurrency stress benchmark', {
+      requestId,
+      sender: senderId,
+      receiver: receiverId,
+      threads: totalRequests,
+      amountPerRequestBdt: `৳${amountPerRequestBdt}`,
+      startingBalanceBdt: `৳${startingBalanceBdt}`,
+    });
 
     // 1. Prepare controlled starting balance for sender and receiver
     const senderWalletRes = await pool.query('SELECT id FROM wallets WHERE user_id = $1', [senderId]);
     const receiverWalletRes = await pool.query('SELECT id FROM wallets WHERE user_id = $1', [receiverId]);
 
     if (senderWalletRes.rows.length === 0 || receiverWalletRes.rows.length === 0) {
+      Logger.warn('CONCURRENCY', 'TEST_ERROR', 'Sender or receiver wallet not found', {
+        requestId,
+        senderId,
+        receiverId,
+      });
       const error: any = new Error('Sender or Receiver wallet not found for stress test.');
       error.statusCode = 404;
       throw error;
@@ -49,7 +66,6 @@ export class StressService {
     );
 
     const initialSenderBalancePoisha = targetStartingBalancePoisha;
-
     const startTime = Date.now();
 
     // 2. Construct N concurrent transfer promises
@@ -65,6 +81,7 @@ export class StressService {
     for (let i = 1; i <= totalRequests; i++) {
       const task = async () => {
         const reqStart = Date.now();
+        const transferId = `TRX-BURST-${i.toString().padStart(3, '0')}`;
         try {
           // Micro delay to stagger arrival slightly across worker threads
           await new Promise((resolve) => setTimeout(resolve, Math.random() * 5));
@@ -75,7 +92,9 @@ export class StressService {
             amountPoisha,
             note: `Stress Test Concurrent Transfer #${i}`,
             category: 'Stress Simulation',
-            type: 'TRANSFER'
+            type: 'TRANSFER',
+            requestId: requestId ? `${requestId}_thread_${i}` : `thread_${i}`,
+            transferId,
           });
 
           const durationMs = Date.now() - reqStart;
@@ -133,6 +152,23 @@ export class StressService {
       }
     }
 
+    const totalRequestedBdt = (totalRequests * amountPoisha) / 100;
+    const totalTransferredBdt = (successfulCount * amountPoisha) / 100;
+
+    // Final Summary Log
+    Logger.info('CONCURRENCY', 'TEST_COMPLETE', '', {
+      requestId,
+      threads: totalRequests,
+      successful: successfulCount,
+      blocked: rejectedCount,
+      totalRequested: totalRequestedBdt,
+      totalTransferred: totalTransferredBdt,
+      duration: `${executionDurationMs}ms`,
+      durationMs: executionDurationMs,
+      doubleSpend: doubleSpendDetected ? 'DETECTED' : 'ZERO',
+      ledgerBalanced: audit.is_balanced ? 'YES' : 'NO',
+    });
+
     return {
       total_requests: totalRequests,
       successful_requests: successfulCount,
@@ -143,7 +179,7 @@ export class StressService {
       final_sender_balance_bdt: finalSenderBalance / 100,
       double_spend_detected: doubleSpendDetected,
       ledger_balanced: audit.is_balanced,
-      total_transferred_bdt: (successfulCount * amountPoisha) / 100,
+      total_transferred_bdt: totalTransferredBdt,
       execution_duration_ms: executionDurationMs,
       discrepancy_bdt: audit.discrepancy_bdt,
       rejection_breakdown: rejectionBreakdown,

@@ -12,9 +12,47 @@ import {
   RelationType
 } from '../types';
 
-const API_BASE = '/api';
+const RAW_API_URL = import.meta.env.VITE_API_URL || '';
+const API_BASE = RAW_API_URL ? `${RAW_API_URL.replace(/\/$/, '')}/api` : '/api';
+
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
+}
 
 export class ApiService {
+  private static memoryCache = new Map<string, CacheEntry<any>>();
+  private static readonly DEFAULT_TTL_MS = 10000; // 10 seconds in-memory cache
+
+  /**
+   * Retrieves data from client memory cache if still valid
+   */
+  private static getFromCache<T>(key: string, ttlMs: number = this.DEFAULT_TTL_MS): T | null {
+    const entry = this.memoryCache.get(key);
+    if (!entry) return null;
+
+    if (Date.now() - entry.timestamp > ttlMs) {
+      this.memoryCache.delete(key);
+      return null;
+    }
+
+    return entry.data as T;
+  }
+
+  /**
+   * Stores response in client memory cache
+   */
+  private static setInCache<T>(key: string, data: T): void {
+    this.memoryCache.set(key, { data, timestamp: Date.now() });
+  }
+
+  /**
+   * Clears in-memory client cache (called on any mutation)
+   */
+  public static clearCache(): void {
+    this.memoryCache.clear();
+  }
+
   private static getHeaders(idempotencyKey?: string): HeadersInit {
     const token = localStorage.getItem('fastpay_jwt_token');
     const activeUserId = localStorage.getItem('nexuspay_active_user_id') || 'usr_shakib_01';
@@ -44,7 +82,8 @@ export class ApiService {
     phone: string;
     password: string;
     email?: string;
-  }): Promise<{ success: boolean; message: string; phone: string; phone_verified: boolean; user?: any }> {
+  }): Promise<{ success: boolean; message: string; phone: string; phone_verified: boolean; user?: any; dev_otp?: string }> {
+    this.clearCache();
     const res = await fetch(`${API_BASE}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -59,6 +98,7 @@ export class ApiService {
     phone: string;
     otp: string;
   }): Promise<{ success: boolean; message: string; token: string; user: any; phone_verified: boolean }> {
+    this.clearCache();
     const res = await fetch(`${API_BASE}/auth/verify-otp`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -77,7 +117,7 @@ export class ApiService {
 
   public static async resendOtp(payload: {
     phone: string;
-  }): Promise<{ success: boolean; message: string; phone: string }> {
+  }): Promise<{ success: boolean; message: string; phone: string; dev_otp?: string }> {
     const res = await fetch(`${API_BASE}/auth/resend-otp`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -92,6 +132,7 @@ export class ApiService {
     phone: string;
     password: string;
   }): Promise<{ success: boolean; message: string; token: string; user: any; phone_verified: boolean }> {
+    this.clearCache();
     const res = await fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -109,6 +150,7 @@ export class ApiService {
   }
 
   public static async logout(): Promise<void> {
+    this.clearCache();
     try {
       await fetch(`${API_BASE}/auth/logout`, {
         method: 'POST',
@@ -120,42 +162,65 @@ export class ApiService {
   }
 
   public static async getMe(): Promise<UserWithWallet> {
+    const activeUserId = localStorage.getItem('nexuspay_active_user_id') || 'default';
+    const cacheKey = `me:${activeUserId}`;
+    const cached = this.getFromCache<UserWithWallet>(cacheKey, 8000);
+    if (cached) return cached;
+
     const res = await fetch(`${API_BASE}/auth/me`, {
       headers: this.getHeaders(),
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.message || 'Failed to fetch user profile');
+    this.setInCache(cacheKey, json.data);
     return json.data;
   }
 
   // ========================================================
-  // Existing Core Money Movement & Ledger APIs
+  // Core Money Movement & Ledger APIs (Cached in Memory)
   // ========================================================
 
   public static async getUsers(): Promise<UserWithWallet[]> {
+    const cacheKey = 'users:all';
+    const cached = this.getFromCache<UserWithWallet[]>(cacheKey, 10000);
+    if (cached) return cached;
+
     const res = await fetch(`${API_BASE}/users`, {
       headers: this.getHeaders(),
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.message || 'Failed to fetch users');
+    this.setInCache(cacheKey, json.data);
     return json.data;
   }
 
   public static async getMyWallet(): Promise<UserWithWallet> {
+    const activeUserId = localStorage.getItem('nexuspay_active_user_id') || 'default';
+    const cacheKey = `wallet:${activeUserId}`;
+    const cached = this.getFromCache<UserWithWallet>(cacheKey, 8000);
+    if (cached) return cached;
+
     const res = await fetch(`${API_BASE}/wallets/me`, {
       headers: this.getHeaders(),
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.message || 'Failed to fetch wallet');
+    this.setInCache(cacheKey, json.data);
     return json.data;
   }
 
   public static async getHistory(limit = 50): Promise<Transaction[]> {
+    const activeUserId = localStorage.getItem('nexuspay_active_user_id') || 'default';
+    const cacheKey = `history:${activeUserId}:${limit}`;
+    const cached = this.getFromCache<Transaction[]>(cacheKey, 6000);
+    if (cached) return cached;
+
     const res = await fetch(`${API_BASE}/transfers/history?limit=${limit}`, {
       headers: this.getHeaders(),
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.message || 'Failed to fetch history');
+    this.setInCache(cacheKey, json.data);
     return json.data;
   }
 
@@ -167,6 +232,7 @@ export class ApiService {
     category?: string;
     idempotency_key?: string;
   }): Promise<{ message: string; data: any; replayed?: boolean }> {
+    this.clearCache();
     const idemKey = payload.idempotency_key || `IDEM-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const res = await fetch(`${API_BASE}/transfers`, {
       method: 'POST',
@@ -189,6 +255,7 @@ export class ApiService {
     note?: string;
     due_date?: string;
   }): Promise<MoneyRequest> {
+    this.clearCache();
     const res = await fetch(`${API_BASE}/requests`, {
       method: 'POST',
       headers: this.getHeaders(),
@@ -200,19 +267,27 @@ export class ApiService {
   }
 
   public static async getMoneyRequests(filter: 'incoming' | 'outgoing' | 'all' = 'all'): Promise<MoneyRequest[]> {
+    const activeUserId = localStorage.getItem('nexuspay_active_user_id') || 'default';
+    const cacheKey = `requests:${activeUserId}:${filter}`;
+    const cached = this.getFromCache<MoneyRequest[]>(cacheKey, 6000);
+    if (cached) return cached;
+
     const res = await fetch(`${API_BASE}/requests?filter=${filter}`, {
       headers: this.getHeaders(),
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.message || 'Failed to fetch money requests');
+    this.setInCache(cacheKey, json.data);
     return json.data;
   }
 
   public static async acceptMoneyRequest(requestId: string): Promise<any> {
+    this.clearCache();
     const idemKey = `ACCEPT-IDEM-${requestId}-${Date.now()}`;
     const res = await fetch(`${API_BASE}/requests/${requestId}/accept`, {
       method: 'POST',
       headers: this.getHeaders(idemKey),
+      body: JSON.stringify({}),
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.message || 'Failed to accept request');
@@ -220,9 +295,11 @@ export class ApiService {
   }
 
   public static async rejectMoneyRequest(requestId: string): Promise<MoneyRequest> {
+    this.clearCache();
     const res = await fetch(`${API_BASE}/requests/${requestId}/reject`, {
       method: 'POST',
       headers: this.getHeaders(),
+      body: JSON.stringify({}),
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.message || 'Failed to reject request');
@@ -230,9 +307,11 @@ export class ApiService {
   }
 
   public static async cancelMoneyRequest(requestId: string): Promise<MoneyRequest> {
+    this.clearCache();
     const res = await fetch(`${API_BASE}/requests/${requestId}/cancel`, {
       method: 'POST',
       headers: this.getHeaders(),
+      body: JSON.stringify({}),
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.message || 'Failed to cancel request');
@@ -358,6 +437,10 @@ export class ApiService {
     limit = 50,
     offset = 0
   ): Promise<{ entries: LedgerEntry[]; total: number }> {
+    const cacheKey = `ledger:${walletId || 'all'}:${limit}:${offset}`;
+    const cached = this.getFromCache<{ entries: LedgerEntry[]; total: number }>(cacheKey, 6000);
+    if (cached) return cached;
+
     let url = `${API_BASE}/ledger/entries?limit=${limit}&offset=${offset}`;
     if (walletId) url += `&wallet_id=${walletId}`;
 
@@ -366,15 +449,22 @@ export class ApiService {
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.message || 'Failed to fetch ledger entries');
-    return { entries: json.data, total: json.meta.total };
+    const result = { entries: json.data, total: json.meta.total };
+    this.setInCache(cacheKey, result);
+    return result;
   }
 
   public static async getLedgerAudit(): Promise<LedgerAuditResult> {
+    const cacheKey = 'ledger:audit';
+    const cached = this.getFromCache<LedgerAuditResult>(cacheKey, 8000);
+    if (cached) return cached;
+
     const res = await fetch(`${API_BASE}/ledger/audit`, {
       headers: this.getHeaders(),
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.message || 'Failed to run ledger audit');
+    this.setInCache(cacheKey, json.data);
     return json.data;
   }
 
@@ -385,6 +475,7 @@ export class ApiService {
     amount_per_request_bdt: number;
     starting_balance_bdt?: number;
   }): Promise<StressTestResult> {
+    this.clearCache();
     const res = await fetch(`${API_BASE}/stress/run`, {
       method: 'POST',
       headers: this.getHeaders(),
@@ -396,6 +487,7 @@ export class ApiService {
   }
 
   public static async resetDemoData(): Promise<void> {
+    this.clearCache();
     const res = await fetch(`${API_BASE}/dev/reset`, {
       method: 'POST',
       headers: this.getHeaders(),

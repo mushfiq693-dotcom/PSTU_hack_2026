@@ -40,6 +40,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [password, setPassword] = useState('');
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
+  const [devOtp, setDevOtp] = useState<string | null>(null);
 
   // Status & Feedback
   const [isLoading, setIsLoading] = useState(false);
@@ -77,6 +78,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       });
 
       setSuccessMsg(res.message);
+      if (res.dev_otp) {
+        setDevOtp(res.dev_otp);
+      }
       setCooldown(60);
       setMode('otp');
     } catch (err: any) {
@@ -114,6 +118,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     try {
       const res = await ApiService.resendOtp({ phone });
       setSuccessMsg('New OTP sent to your phone.');
+      if (res.dev_otp) {
+        setDevOtp(res.dev_otp);
+      }
       setCooldown(60);
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to resend OTP.');
@@ -408,6 +415,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {/* 3. OTP VERIFICATION FORM */}
         {mode === 'otp' && (
           <form onSubmit={handleVerifyOtp} className="space-y-3.5">
+            {/* Demo / Dev Test Code Auto-Fill Banner */}
+            {devOtp && (
+              <motion.div
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                onClick={() => setOtp(devOtp)}
+                className="cursor-pointer bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl p-2.5 text-center transition-all group"
+              >
+                <div className="text-[10px] text-emerald-400 font-medium flex items-center justify-center gap-1">
+                  <Sparkles className="w-3 h-3 text-amber-400" />
+                  <span>Dev Test OTP (Click to Autofill):</span>
+                </div>
+                <div className="font-mono text-base font-bold text-emerald-300 tracking-[0.25em] mt-0.5 group-hover:scale-105 transition-transform">
+                  {devOtp}
+                </div>
+              </motion.div>
+            )}
+
             <div>
               <label className="block text-[11px] font-medium text-slate-400 mb-1 text-center">
                 Enter 6-Digit OTP
