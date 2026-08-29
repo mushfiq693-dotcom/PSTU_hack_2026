@@ -59,13 +59,12 @@ export class FraudEngine {
     );
 
     const recentTxCount = velocityRes.rows[0]?.recent_count || 0;
-    const recentSumPoisha = Number(velocityRes.rows[0]?.recent_sum || 0);
 
     if (recentTxCount >= this.MAX_TRANSFERS_PER_WINDOW) {
-      riskScore += 45;
-      riskFactors.push(`High Transaction Velocity (${recentTxCount} transfers in 60s)`);
+      riskScore += 60;
+      riskFactors.push(`Critical Transaction Velocity (${recentTxCount} transfers in 60s)`);
     } else if (recentTxCount >= 3) {
-      riskScore += 20;
+      riskScore += 30;
       riskFactors.push(`Elevated Transaction Velocity (${recentTxCount} transfers in 60s)`);
     }
 
@@ -73,19 +72,19 @@ export class FraudEngine {
     // RULE 2: Amount Anomaly & Large Outflow Analysis
     // -------------------------------------------------------------
     if (amountPoisha >= this.CRITICAL_VALUE_THRESHOLD_POISHA) {
-      riskScore += 40;
-      riskFactors.push(`Critical High-Value Transfer (৳${(amountPoisha / 100).toLocaleString()})`);
+      riskScore += 75; // ৳50,000+ brings score to 80+ (instant block)
+      riskFactors.push(`Critical High-Value Transfer Anomaly (৳${(amountPoisha / 100).toLocaleString()})`);
     } else if (amountPoisha >= this.HIGH_VALUE_THRESHOLD_POISHA) {
-      riskScore += 25;
-      riskFactors.push(`High-Value Transfer (৳${(amountPoisha / 100).toLocaleString()})`);
+      riskScore += 35;
+      riskFactors.push(`High-Value Transfer Flag (৳${(amountPoisha / 100).toLocaleString()})`);
     }
 
     // -------------------------------------------------------------
     // RULE 3: Total Account Drain Pattern
     // -------------------------------------------------------------
-    if (currentBalancePoisha > 0 && amountPoisha >= currentBalancePoisha * 0.95 && amountPoisha > 1000000) {
-      riskScore += 20;
-      riskFactors.push('Wallet Liquidation Pattern (>95% balance outflow)');
+    if (currentBalancePoisha > 0 && amountPoisha >= currentBalancePoisha * 0.90 && amountPoisha > 1000000) {
+      riskScore += 30;
+      riskFactors.push('Wallet Liquidation Pattern (>90% balance outflow)');
     }
 
     // -------------------------------------------------------------
@@ -102,7 +101,7 @@ export class FraudEngine {
 
     const priorTransfers = historyRes.rows[0]?.tx_count || 0;
     if (priorTransfers === 0 && amountPoisha > 1000000) {
-      riskScore += 15;
+      riskScore += 20;
       riskFactors.push('First-Time High-Value Recipient');
     }
 
@@ -115,15 +114,15 @@ export class FraudEngine {
     let isBlocked = false;
     let requiresStepUpOtp = false;
 
-    if (riskScore >= 80) {
+    if (riskScore >= 70) {
       riskLevel = 'CRITICAL';
       recommendation = 'BLOCK';
       isBlocked = true;
-    } else if (riskScore >= 55) {
+    } else if (riskScore >= 45) {
       riskLevel = 'HIGH';
       recommendation = 'CHALLENGE_OTP';
       requiresStepUpOtp = true;
-    } else if (riskScore >= 30) {
+    } else if (riskScore >= 25) {
       riskLevel = 'MEDIUM';
       recommendation = 'ALLOW';
     }
